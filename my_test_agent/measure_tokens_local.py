@@ -21,8 +21,8 @@ texts = {
 for name, text in texts.items():
     tokens = tokenizer.encode(text)
     print(f"{name:15} → {len(tokens):4} токенов")
-    
-print('\n==TikToken==\n')
+
+print("\n==TikToken==\n")
 enc = tiktoken.get_encoding("cl100k_base")
 
 for name, text in texts.items():

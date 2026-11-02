@@ -28,6 +28,11 @@ except Exception as e:  # noqa: BLE001
 STRICT_MODE = False
 FLAG_KEY = "_processed"
 
+# === НАСТРОЙКА СКОЛЬЗЯЩЕГО ОКНА ===
+# Сколько последних реплик (событий) отправлять в модель.
+# Всё, что было раньше, отсекается, чтобы не тащить всю историю.
+HISTORY_WINDOW_SIZE = 10
+
 
 def get_dynamic_instruction(context) -> str:
     """
@@ -131,45 +136,9 @@ def my_before_model_callback(
     callback_context: CallbackContext, llm_request: LlmRequest
 ):
     """Вызывается ДО запроса к модели.
-
-    `llm_request.contents` — это список объектов `Content`, которые уйдут
-    в модель. Каждый `Content` имеет:
-      - role: "user" или "model" (не "assistant"!)
-      - parts: список `Part`, у каждого может быть text / function_call / function_response
-
-    ПРАВИЛЬНЫЕ СПОСОБЫ МЕНЯТЬ ДАННЫЕ:
-
-    1) Заменить всё содержимое на новое (как здесь):
-         llm_request.contents = new_contents
-       Важно: сохраняй чередование ролей user → model → user → model.
-
-    2) Изменить только последнее сообщение пользователя (например, сжать):
-         if llm_request.contents:
-             last = llm_request.contents[-1]
-             if last.role == "user" and last.parts:
-                 for p in last.parts:
-                     if p.text:
-                         p.text = compress(p.text)
-       Это безопаснее: остальная история не трогается.
-
-    3) Добавить системное сообщение в начало (не заменяя историю):
-         llm_request.contents.insert(
-             0, Content(role="user", parts=[Part(text="[system]: будь краток")])
-         )
-       Внимание: роль "system" в ADK часто передаётся отдельно через
-       instruction, а не через contents. Используй только если уверен.
-
-    4) Отфильтровать лишние события (например, убрать вызовы инструментов):
-         llm_request.contents = [
-             c for c in llm_request.contents
-             if not any(p.function_call for p in c.parts)
-         ]
-       Осторожно: модель может потерять контекст и зациклиться.
-
-    ЧЕГО НЕ ДЕЛАТЬ:
-      - Не схлопывай всё в одно сообщение (роли сломаются, модель зациклится).
-      - Не смешивай роли: "model" — это ответ ассистента, "user" — всё остальное.
-      - Не меняй `llm_request.contents` на пустой список — модель упадёт.
+    
+    Здесь мы применяем скользящее окно: берём только последние N реплик,
+    чтобы не тащить в контекст всю историю и экономить токены.
     """
     # Защита от повторного наложения
     if callback_context.state.get(FLAG_KEY):
@@ -180,30 +149,32 @@ def my_before_model_callback(
     if not session:
         return
 
-    # Собираем историю с правильными ролями.
-    new_contents = []
+    # 1. Собираем ВСЕ валидные события (только текст, без вызовов инструментов)
+    all_valid_events = []
     for event in session.events:
-        # 1. Извлекаем полный текст
         text = event_to_text(event)
         if not text:
             continue
-
-        # 2. Определяем роль
         role = "user" if event.author == "user" else "model"
+        all_valid_events.append((role, text))
 
-        # 3. Подготовительная работа (сушка + сохранение эмоции в state)
+    # 2. ПРИМЕНЯЕМ СКОЛЬЗЯЩЕЕ ОКНО
+    # Берём только последние HISTORY_WINDOW_SIZE реплик.
+    windowed_events = all_valid_events[-HISTORY_WINDOW_SIZE:]
+
+    # 3. Подготавливаем текст (сушка + эмоции) только для событий из окна
+    new_contents = []
+    for role, text in windowed_events:
         processed_text = prepare_text(callback_context, text, role=role)
-
-        # 4. Добавляем в список
         new_contents.append(Content(role=role, parts=[Part(text=processed_text)]))
 
-    print(f"=== ИСТОРИЯ (событий: {len(new_contents)}) ===")
+    print(f"=== ИСТОРИЯ (событий в окне: {len(new_contents)} из {len(all_valid_events)}) ===")
     for c in new_contents:
         preview = c.parts[0].text[:80] if c.parts and c.parts[0].text else ""
         print(f"  [{c.role}]: {preview}")
     print("=" * 50)
 
-    # 5. Отправляем в модель
+    # 4. Отправляем в модель
     llm_request.contents = new_contents
 
     # Поднимаем флаг: в этом ходе больше не обрабатываем
@@ -213,48 +184,7 @@ def my_before_model_callback(
 def my_after_model_callback(
     callback_context: CallbackContext, llm_response: LlmResponse
 ):
-    """Вызывается ПОСЛЕ ответа модели.
-
-    `llm_response.content` — это `Content` (или None при ошибке).
-    У него есть `parts`, и в каждом `Part` может быть:
-      - text: строка ответа
-      - function_call: вызов инструмента (name, args)
-      - function_response: результат инструмента (если это не финал)
-
-    ПРАВИЛЬНЫЕ СПОСОБЫ МЕНЯТЬ ДАННЫЕ:
-
-    1) Изменить текст в ответе (например, добавить тепло):
-         for p in llm_response.content.parts:
-             if p.text:
-                 p.text = add_warmth(p.text)
-       `Part` — pydantic-модель, поля мутабельны.
-
-    2) Заменить весь ответ на новый текст (например, переформулировать):
-         llm_response.content = Content(
-             role="model",
-             parts=[Part(text="готовый ответ")],
-         )
-       Роль оставляй "model", иначе следующий ход может сломаться.
-
-    3) Добавить недостающую часть (например, если модель забыла текст):
-         if not any(p.text for p in llm_response.content.parts):
-             llm_response.content.parts.append(Part(text="..."))
-       Осторожно: если там был function_call, добавление текста может
-       сбить агентный цикл.
-
-    4) Перехватить вызов инструмента и подменить аргументы:
-         for p in llm_response.content.parts:
-             if p.function_call and p.function_call.name == "get_echo":
-                 p.function_call.args["string"] = "подменённый аргумент"
-       Полезно для отладки, но легко получить неожиданное поведение.
-
-    ЧЕГО НЕ ДЕЛАТЬ:
-      - Не пытайся в `after_model` "отменить" вызов инструмента —
-        для этого есть `before_tool_callback`.
-      - Не меняй роль с "model" на "user" — это ломает историю.
-      - Не добавляй `function_response` вручную — его должен
-        сформировать сам агент после реального вызова инструмента.
-    """
+    """Вызывается ПОСЛЕ ответа модели."""
     # Обработка ошибок: если модель упала — снимаем флаг, чтобы не залипнуть
     if llm_response.error_code:
         callback_context.state[FLAG_KEY] = False
@@ -270,7 +200,7 @@ def my_after_model_callback(
         part.function_call is not None for part in llm_response.content.parts
     )
 
-    # Логируем ответ (и здесь же можно менять текст)
+    # Логируем ответ
     for part in llm_response.content.parts:
         if part.text:
             print("=== ОТВЕТ МОДЕЛИ ===")
@@ -298,7 +228,7 @@ root_agent = Agent(
     ),
     name='echo_agent',
     description='Echo agent.',
-    # ИСПОЛЬЗУЕМ ДИНАМИЧЕСКУЮ ИНСТРУКЦИЮ ВМЕСТО СТРОКИ
+    # ИСПОЛЬЗУЕМ ДИНАМИЧЕСКУЮ ИНСТРУКЦИЮ
     instruction=get_dynamic_instruction,
     tools=[get_echo],
     before_model_callback=my_before_model_callback,

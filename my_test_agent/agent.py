@@ -79,6 +79,7 @@ def get_llm_model():
             api_base=os.getenv("YANDEX_API_BASE"),
             api_key=os.getenv("YANDEX_API_KEY"),
             extra_headers={"OpenAI-Project": folder_id},
+            reasoning_effort="off",
         )
         
     # Sourcery Fix: Убрали else, так как предыдущие if возвращают результат

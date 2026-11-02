@@ -42,13 +42,11 @@ def get_dynamic_instruction(context) -> str:
     # Достаём эмоцию, которую сохранил before_model_callback
     emotion = context.state.get("current_emotion", "neutral")
     
-    # Базовые правила (экономия токенов)
+    # Базовые правила (экономия токенов + жесткий запрет на инструмент)
     base_rules = (
         "You are an echo agent. Forward the user's messages. "
         "IMPORTANT: You are running in a token-expensive environment. "
-        "Before calling any tool, ask yourself: 'Can I answer without the tool?' "
-        "If yes — answer directly, without calling the tool. "
-        "Only call a tool when it is absolutely necessary. "
+        "DO NOT call the get_echo tool. Just output the user's exact text. "
         "Minimize the number of tokens in your responses. "
         "Keep your thoughts short. Do not over-explain. "
     )
@@ -93,10 +91,14 @@ def sparsify_text(text: str) -> str:
     text = text.replace(", и ", ". ")
     text = text.replace(", а ", ". ")
 
-    # 3. Убираем лишние пробелы
+    # 3. Убираем артефакты сушки (запятые перед точками)
+    text = text.replace(",.", ".")
+    text = text.replace(", .", ".")
+
+    # 4. Убираем лишние пробелы
     text = re.sub(r"\s+", " ", text).strip()
     
-    # 4. Делаем первую букву заглавной
+    # 5. Делаем первую букву заглавной
     if text:
         text = text[0].upper() + text[1:]
 
@@ -136,9 +138,45 @@ def my_before_model_callback(
     callback_context: CallbackContext, llm_request: LlmRequest
 ):
     """Вызывается ДО запроса к модели.
-    
-    Здесь мы применяем скользящее окно: берём только последние N реплик,
-    чтобы не тащить в контекст всю историю и экономить токены.
+
+    `llm_request.contents` — это список объектов `Content`, которые уйдут
+    в модель. Каждый `Content` имеет:
+      - role: "user" или "model" (не "assistant"!)
+      - parts: список `Part`, у каждого может быть text / function_call / function_response
+
+    ПРАВИЛЬНЫЕ СПОСОБЫ МЕНЯТЬ ДАННЫЕ:
+
+    1) Заменить всё содержимое на новое (как здесь):
+         llm_request.contents = new_contents
+       Важно: сохраняй чередование ролей user → model → user → model.
+
+    2) Изменить только последнее сообщение пользователя (например, сжать):
+         if llm_request.contents:
+             last = llm_request.contents[-1]
+             if last.role == "user" and last.parts:
+                 for p in last.parts:
+                     if p.text:
+                         p.text = compress(p.text)
+       Это безопаснее: остальная история не трогается.
+
+    3) Добавить системное сообщение в начало (не заменяя историю):
+         llm_request.contents.insert(
+             0, Content(role="user", parts=[Part(text="[system]: будь краток")])
+         )
+       Внимание: роль "system" в ADK часто передаётся отдельно через
+       instruction, а не через contents. Используй только если уверен.
+
+    4) Отфильтровать лишние события (например, убрать вызовы инструментов):
+         llm_request.contents = [
+             c for c in llm_request.contents
+             if not any(p.function_call for p in c.parts)
+         ]
+       Осторожно: модель может потерять контекст и зациклиться.
+
+    ЧЕГО НЕ ДЕЛАТЬ:
+      - Не схлопывай всё в одно сообщение (роли сломаются, модель зациклится).
+      - Не смешивай роли: "model" — это ответ ассистента, "user" — всё остальное.
+      - Не меняй `llm_request.contents` на пустой список — модель упадёт.
     """
     # Защита от повторного наложения
     if callback_context.state.get(FLAG_KEY):
@@ -184,7 +222,48 @@ def my_before_model_callback(
 def my_after_model_callback(
     callback_context: CallbackContext, llm_response: LlmResponse
 ):
-    """Вызывается ПОСЛЕ ответа модели."""
+    """Вызывается ПОСЛЕ ответа модели.
+
+    `llm_response.content` — это `Content` (или None при ошибке).
+    У него есть `parts`, и в каждом `Part` может быть:
+      - text: строка ответа
+      - function_call: вызов инструмента (name, args)
+      - function_response: результат инструмента (если это не финал)
+
+    ПРАВИЛЬНЫЕ СПОСОБЫ МЕНЯТЬ ДАННЫЕ:
+
+    1) Изменить текст в ответе (например, добавить тепло):
+         for p in llm_response.content.parts:
+             if p.text:
+                 p.text = add_warmth(p.text)
+       `Part` — pydantic-модель, поля мутабельны.
+
+    2) Заменить весь ответ на новый текст (например, переформулировать):
+         llm_response.content = Content(
+             role="model",
+             parts=[Part(text="готовый ответ")],
+         )
+       Роль оставляй "model", иначе следующий ход может сломаться.
+
+    3) Добавить недостающую часть (например, если модель забыла текст):
+         if not any(p.text for p in llm_response.content.parts):
+             llm_response.content.parts.append(Part(text="..."))
+       Осторожно: если там был function_call, добавление текста может
+       сбить агентный цикл.
+
+    4) Перехватить вызов инструмента и подменить аргументы:
+         for p in llm_response.content.parts:
+             if p.function_call and p.function_call.name == "get_echo":
+                 p.function_call.args["string"] = "подменённый аргумент"
+       Полезно для отладки, но легко получить неожиданное поведение.
+
+    ЧЕГО НЕ ДЕЛАТЬ:
+      - Не пытайся в `after_model` "отменить" вызов инструмента —
+        для этого есть `before_tool_callback`.
+      - Не меняй роль с "model" на "user" — это ломает историю.
+      - Не добавляй `function_response` вручную — его должен
+        сформировать сам агент после реального вызова инструмента.
+    """
     # Обработка ошибок: если модель упала — снимаем флаг, чтобы не залипнуть
     if llm_response.error_code:
         callback_context.state[FLAG_KEY] = False
@@ -200,12 +279,14 @@ def my_after_model_callback(
         part.function_call is not None for part in llm_response.content.parts
     )
 
-    # Логируем ответ
+    # Логируем ответ (и здесь же можно менять текст)
     for part in llm_response.content.parts:
         if part.text:
             print("=== ОТВЕТ МОДЕЛИ ===")
             print(part.text)
             print("=" * 20)
+            # Пример изменения:
+            # part.text = "✨ " + part.text
 
     # Если это финальный ответ (без вызова инструмента) — снимаем флаг,
     # чтобы следующий ход пользователя обработался заново.

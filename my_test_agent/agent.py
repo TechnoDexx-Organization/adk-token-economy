@@ -12,7 +12,6 @@ from transformers import pipeline
 load_dotenv()
 
 # === НАСТРОЙКА ЭМОЦИОНАЛЬНОГО АНАЛИЗА ===
-# Загружаем пайплайн один раз при старте агента.
 print("⏳ Загрузка модели эмоционального анализа...")
 try:
     emotion_pipeline = pipeline(
@@ -23,13 +22,9 @@ try:
 except Exception as e:  # noqa: BLE001
     emotion_pipeline = None
     print(f"⚠️ Не удалось загрузить модель: {e}")
-# =========================================
 
 STRICT_MODE = False
 FLAG_KEY = "_processed"
-
-# === НАСТРОЙКА СКОЛЬЗЯЩЕГО ОКНА ===
-# Сколько последних реплик (событий) отправлять в модель.
 HISTORY_WINDOW_SIZE = 10
 
 
@@ -43,6 +38,8 @@ def get_llm_model():
             model="openai/deepseek/deepseek-v4.1-flash",
             api_base="https://api.selectel.ru/aig/v1",
             api_key=os.getenv("SELECTEL_API_KEY"),
+            # Попытка отключить reasoning, чтобы избежать MODEL_RETURNED_NO_CONTENT
+            reasoning_effort='off',
         )
         
     elif provider == "yandex":
@@ -54,51 +51,40 @@ def get_llm_model():
             api_key=os.getenv("YANDEX_API_KEY"),
             extra_headers={"OpenAI-Project": folder_id},
         )
-        
     else:
-        raise ValueError(f"❌ Неизвестный AI_PROVIDER: {provider}. Используй 'yandex' или 'selectel'.")
+        raise ValueError(f"❌ Неизвестный AI_PROVIDER: {provider}")
 
 
 def get_dynamic_instruction(context) -> str:
     """
     Динамическая инструкция: читает эмоцию из state и формирует системный промпт.
-    Это позволяет модели отвечать с нужным тоном, даже если текст был "высушен".
     """
     emotion = context.state.get("current_emotion", "neutral")
-    
-    # Базовые правила (экономия токенов + жесткий запрет на инструмент)
     base_rules = (
         "You are an echo agent. Forward the user's messages. "
         "IMPORTANT: You are running in a token-expensive environment. "
-        "DO NOT call the get_echo tool. Just output the user's exact text. "
+        "DO NOT call any tools. Just output the user's exact text. "
         "Minimize the number of tokens in your responses. "
         "Keep your thoughts short. Do not over-explain. "
     )
-    
-    # Добавляем эмоциональный окрас
     if emotion in ["sadness", "fear"]:
-        return base_rules + " TONE: The user is feeling sad or fearful. Be gentle, supportive, and brief. Acknowledge their state softly."
+        return base_rules + " TONE: The user is feeling sad or fearful. Be gentle, supportive, and brief."
     elif emotion in ["anger", "disgust"]:
-        return base_rules + " TONE: The user is irritated or angry. Be calm, objective, and concise. Do not mirror their aggression."
+        return base_rules + " TONE: The user is irritated or angry. Be calm, objective, and concise."
     elif emotion in ["happiness", "enthusiasm"]:
-        return base_rules + " TONE: The user is in a good mood. You can be slightly more upbeat, but remain efficient."
-    
-    # Нейтральный или неизвестный
+        return base_rules + " TONE: The user is in a good mood. Be slightly more upbeat, but remain efficient."
     return base_rules + " TONE: Neutral. Be direct and helpful."
 
 
 def event_to_text(event) -> str:
-    """Достаёт полный текст из события. Пустая строка, если текста нет."""
+    """Достаёт полный текст из события."""
     if not event.content or not event.content.parts:
         return ""
     return "".join(part.text for part in event.content.parts if part.text)
 
 
 def sparsify_text(text: str) -> str:
-    """
-    "Сушка" текста: убираем воду, делаем предложения короче.
-    Экономит около 25% токенов при отправке в модель.
-    """
+    """Сушка текста (удаление воды и связок)."""
     filler_words = [
         r"\bкороче\b", r"\bв общем\b", r"\bкак бы\b", r"\bтипа\b",
         r"\bна самом деле\b", r"\bв принципе\b", r"\bпо сути\b",
@@ -106,66 +92,39 @@ def sparsify_text(text: str) -> str:
     ]
     for word in filler_words:
         text = re.sub(word, "", text, flags=re.IGNORECASE)
-
-    text = text.replace(" потому что ", ". ")
-    text = text.replace(" так как ", ". ")
-    text = text.replace(" и теперь ", ". ")
-    text = text.replace(", и ", ". ")
-    text = text.replace(", а ", ". ")
-
-    text = text.replace(",.", ".")
-    text = text.replace(", .", ".")
-
+    text = text.replace(" потому что ", ". ").replace(" так как ", ". ").replace(" и теперь ", ". ")
+    text = text.replace(", и ", ". ").replace(", а ", ". ")
+    text = text.replace(",.", ".").replace(", .", ".")
     text = re.sub(r"\s+", " ", text).strip()
-    
     if text:
         text = text[0].upper() + text[1:]
-
     return text
 
 
 def prepare_text(callback_context: CallbackContext, text: str, role: str = "user") -> str:
-    """
-    Подготавливает текст перед отправкой в модель.
-    1. Анализирует эмоцию и сохраняет её в state (для динамической инструкции).
-    2. "Сушит" текст для экономии токенов.
-    """
+    """Анализ эмоций и сушка текста перед отправкой."""
     if role != "user":
         return text
 
-    # 1. Определяем эмоцию
-    emotion_label = "neutral"
     if emotion_pipeline:
         try:
             result = emotion_pipeline(text, truncation=True, max_length=512)[0]
-            emotion_label = result['label']
-            score = result['score']
-            
-            callback_context.state["current_emotion"] = emotion_label
-            print(f"  (Эмоция определена: {emotion_label} {score:.2f})")
-        except Exception as e:  # noqa: BLE001
-            print(f"⚠️ Ошибка при анализе эмоции: {e}")
+            callback_context.state["current_emotion"] = result['label']
+            print(f"  (Эмоция: {result['label']} {result['score']:.2f})")
+        except Exception:
+            pass
     
-    # 2. Сушим текст (эмоцию убираем, так как она уже в state)
-    dry_text = sparsify_text(text)
-    
-    return dry_text
+    return sparsify_text(text)
 
 
-def my_before_model_callback(
-    callback_context: CallbackContext, llm_request: LlmRequest
-):
-    """Вызывается ДО запроса к модели."""
-    # Защита от повторного наложения
+def my_before_model_callback(callback_context: CallbackContext, llm_request: LlmRequest):
+    """Собирает историю, применяет скользящее окно и сушку."""
     if callback_context.state.get(FLAG_KEY):
-        print("=== [before_model] уже обработано, пропускаем ===")
         return
-
     session = callback_context.session
     if not session:
         return
 
-    # 1. Собираем ВСЕ валидные события (только текст, без вызовов инструментов)
     all_valid_events = []
     for event in session.events:
         text = event_to_text(event)
@@ -174,40 +133,54 @@ def my_before_model_callback(
         role = "user" if event.author == "user" else "model"
         all_valid_events.append((role, text))
 
-    # 2. ПРИМЕНЯЕМ СКОЛЬЗЯЩЕЕ ОКНО
     windowed_events = all_valid_events[-HISTORY_WINDOW_SIZE:]
-
-    # 3. Подготавливаем текст (сушка + эмоции) только для событий из окна
     new_contents = []
     for role, text in windowed_events:
         processed_text = prepare_text(callback_context, text, role=role)
         new_contents.append(Content(role=role, parts=[Part(text=processed_text)]))
 
     print(f"=== ИСТОРИЯ (событий в окне: {len(new_contents)} из {len(all_valid_events)}) ===")
-    for c in new_contents:
-        preview = c.parts[0].text[:80] if c.parts and c.parts[0].text else ""
-        print(f"  [{c.role}]: {preview}")
-    print("=" * 50)
-
-    # 4. Отправляем в модель
     llm_request.contents = new_contents
     callback_context.state[FLAG_KEY] = True
 
 
-def my_after_model_callback(
-    callback_context: CallbackContext, llm_response: LlmResponse
-):
-    """Вызывается ПОСЛЕ ответа модели."""
-    if llm_response.error_code:
+def my_after_model_callback(callback_context: CallbackContext, llm_response: LlmResponse):
+    """Логика обработки ответа + спасательный круг при пустоте."""
+    
+    # ПРОВЕРКА НА ПУСТОТУ (Без хардкода кода ошибки, как советовал коллега)
+    is_empty = (
+        not llm_response.content 
+        or not llm_response.content.parts
+        or not any(p.text for p in llm_response.content.parts)
+    )
+
+    if is_empty:
         callback_context.state[FLAG_KEY] = False
-        print(f"=== [after_model] ошибка {llm_response.error_code}, флаг снят ===")
-        if llm_response.error_message:
-            print(f"    Сообщение: {llm_response.error_message}")
+        
+        # Счетчик сбоев
+        error_count = callback_context.state.get("error_count", 0) + 1
+        callback_context.state["error_count"] = error_count
+        
+        # Логируем сам факт ошибки (для отладки)
+        if llm_response.error_code:
+            print(f"⚠️ [after_model] Сбой API: {llm_response.error_code}. Сбой №{error_count}.")
+        else:
+            print(f"⚠️ [after_model] Модель вернула пустоту. Сбой №{error_count}.")
+            
+        session = callback_context.session
+        if session:
+            for event in reversed(session.events):
+                if event.author == "user":
+                    text = event_to_text(event)
+                    if text:
+                        # КОЛЛЕГА ПРАВ: Возвращаем ОРИГИНАЛЬНЫЙ текст, без сушки
+                        llm_response.content = Content(role="model", parts=[Part(text=text)])
+                        llm_response.error_code = None
+                        llm_response.error_message = None
+                    break
         return
 
-    if not llm_response.content or not llm_response.content.parts:
-        return
-
+    # Обычная логика логов
     has_function_call = any(
         part.function_call is not None for part in llm_response.content.parts
     )
@@ -223,17 +196,12 @@ def my_after_model_callback(
         print("=== [after_model] финал, флаг снят ===")
 
 
-def get_echo(string: str) -> str:
-    """Returns the input string as is."""
-    return string
-
-
 root_agent = Agent(
-    model=get_llm_model(),  # <--- Вызываем фабрику
+    model=get_llm_model(),
     name='echo_agent',
     description='Echo agent.',
     instruction=get_dynamic_instruction,
-    tools=[get_echo],
+    tools=[],
     before_model_callback=my_before_model_callback,
     after_model_callback=my_after_model_callback,
 )

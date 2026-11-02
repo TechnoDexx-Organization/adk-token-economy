@@ -1,0 +1,885 @@
+{
+  "id": "d52acc77-e85f-4a49-8343-7763370bdcdb",
+  "appName": "my_test_agent",
+  "userId": "user",
+  "state": {
+    "current_emotion": "happiness",
+    "_processed": false,
+    "__session_metadata__": {
+      "displayName": "Привет, как проходит день?"
+    }
+  },
+  "events": [
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Привет, как проходит день?"
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-f78c0fc3-c9fd-4c14-93b3-eb540a16eaea",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "b9eeacb2-417f-4ff2-9275-e9739816ad76",
+      "timestamp": 1793633654.0882354
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Привет, как проходит день?"
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 7,
+        "promptTokenCount": 96,
+        "totalTokenCount": 103
+      },
+      "invocationId": "e-f78c0fc3-c9fd-4c14-93b3-eb540a16eaea",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "happiness",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "d6964d1b-61d7-43a0-abb6-400f869e6988",
+      "timestamp": 1793633654.1592069
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Всё нормально, работаю над кодом."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-9eb0ef57-a6d3-40be-88e4-ec604745f74a",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "d19740c2-d8ff-4fe3-99bf-4757cdc3bb5e",
+      "timestamp": 1793633696.5451798
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Всё нормально, работаю над кодом."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 12,
+        "promptTokenCount": 129,
+        "totalTokenCount": 141
+      },
+      "invocationId": "e-9eb0ef57-a6d3-40be-88e4-ec604745f74a",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "4354e927-37ba-4f72-8232-7f051213c270",
+      "timestamp": 1793633696.5586772
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "А что именно пишешь сейчас?"
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-902be449-c325-4aa8-bf7f-b23b9ae10629",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "ece15d7f-2bbb-4e18-8d38-ac3f17074cdb",
+      "timestamp": 1793633724.2701743
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "А что именно пишешь сейчас?"
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 7,
+        "promptTokenCount": 142,
+        "totalTokenCount": 149
+      },
+      "invocationId": "e-902be449-c325-4aa8-bf7f-b23b9ae10629",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "f4f85a13-114c-4ad0-bebb-552f80a8e668",
+      "timestamp": 1793633724.2849073
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Тестирую нового агента."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-d5fbb58d-3698-4644-9fd7-58c4ec04eb74",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "77043740-e76e-4504-94d7-e0a2106c437e",
+      "timestamp": 1793633749.3049383
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Тестирую нового агента."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 8,
+        "promptTokenCount": 161,
+        "totalTokenCount": 169
+      },
+      "invocationId": "e-d5fbb58d-3698-4644-9fd7-58c4ec04eb74",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "73a54ed1-6fc8-4861-87bf-c089dfc493f6",
+      "timestamp": 1793633749.3253345
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Он умный или глупый?"
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-c868bc66-0583-4b58-8bce-374348e39228",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "0c9b81fd-a37e-42a2-83a2-019b301725f3",
+      "timestamp": 1793633773.8371663
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Он умный или глупый?"
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 9,
+        "promptTokenCount": 182,
+        "totalTokenCount": 191
+      },
+      "invocationId": "e-c868bc66-0583-4b58-8bce-374348e39228",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "91a62786-90c9-4404-828d-e7718a908837",
+      "timestamp": 1793633773.858932
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Пока сложно сказать."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-f0347b1a-3b4f-40a1-8b0b-b18aab4886e0",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "2fd3ac17-e965-466e-82f6-beba53a186da",
+      "timestamp": 1793633800.3779728
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Пока сложно сказать."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 6,
+        "promptTokenCount": 193,
+        "totalTokenCount": 199
+      },
+      "invocationId": "e-f0347b1a-3b4f-40a1-8b0b-b18aab4886e0",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "sadness",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "c10ae836-0301-482d-99a0-03e39590f4dd",
+      "timestamp": 1793633800.3887308
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Нужно больше тестов."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-87c4941e-d3be-45ce-9d36-b1bd57364d11",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "26821484-755b-4cca-9290-8699c75b9cbe",
+      "timestamp": 1793633815.63995
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Нужно больше тестов."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 7,
+        "promptTokenCount": 196,
+        "totalTokenCount": 203
+      },
+      "invocationId": "e-87c4941e-d3be-45ce-9d36-b1bd57364d11",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "7e048bca-21c7-424c-b394-68ac3d9958fa",
+      "timestamp": 1793633815.658774
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Тогда продолжай тестировать."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-507c827a-c13e-4d3a-a4f0-335190ac3be2",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "81d40966-f9b8-48c3-8bc4-4fbf923b642f",
+      "timestamp": 1793633834.1271508
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Тогда продолжай тестировать."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 8,
+        "promptTokenCount": 183,
+        "totalTokenCount": 191
+      },
+      "invocationId": "e-507c827a-c13e-4d3a-a4f0-335190ac3be2",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "542bdea1-77bc-4b44-b3d1-15ab5d3d2e83",
+      "timestamp": 1793633834.1435087
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Да, я так и делаю."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-daec6f6c-9d15-4206-9d33-ba2cbc4efe29",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "1adb0762-465e-4903-bbbc-7b265ccf23f3",
+      "timestamp": 1793633854.702001
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Да, я так и делаю."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 8,
+        "promptTokenCount": 184,
+        "totalTokenCount": 192
+      },
+      "invocationId": "e-daec6f6c-9d15-4206-9d33-ba2cbc4efe29",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "anger",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "aa5f0bd5-1d9f-4984-aef2-3efe3071b0c9",
+      "timestamp": 1793633854.7211094
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Сколько времени это займет?"
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-a3a7aa23-491f-40bd-a298-a1a84b9c560e",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "a4366d54-baf7-4b94-9640-3d8195e7d7cf",
+      "timestamp": 1793633871.5449398
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Сколько времени это займет?"
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 9,
+        "promptTokenCount": 192,
+        "totalTokenCount": 201
+      },
+      "invocationId": "e-a3a7aa23-491f-40bd-a298-a1a84b9c560e",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "eebb7b8b-d308-4b6f-8960-0b312c2a0cda",
+      "timestamp": 1793633871.5586138
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Наверное, еще пару часов."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-ebaa9337-0778-4898-903d-1b359af2859d",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "76bd3afa-318c-4af7-9514-5955c769a0bc",
+      "timestamp": 1793633891.5356596
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Наверное, еще пару часов."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 9,
+        "promptTokenCount": 187,
+        "totalTokenCount": 196
+      },
+      "invocationId": "e-ebaa9337-0778-4898-903d-1b359af2859d",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "4d22a407-b65b-42a2-947a-92f22171257a",
+      "timestamp": 1793633891.5593421
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Не переутомляйся."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-4dfefb6c-2721-46bc-aaf3-99354fbebee0",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "b8483e0f-fe20-45b8-8e44-f74027f5f82e",
+      "timestamp": 1793633932.8079069
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Не переутомляйся."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 8,
+        "promptTokenCount": 191,
+        "totalTokenCount": 199
+      },
+      "invocationId": "e-4dfefb6c-2721-46bc-aaf3-99354fbebee0",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "69b07943-9a31-400d-923a-d278e534d340",
+      "timestamp": 1793633932.8247254
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Постараюсь, спасибо."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-1e5563cd-2f2e-4a4f-9f1e-9e3d5ec7a7f8",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "78504e87-24fa-432b-8b38-485bf9ae5f12",
+      "timestamp": 1793633953.7369807
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Постараюсь, спасибо."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 10,
+        "promptTokenCount": 194,
+        "totalTokenCount": 204
+      },
+      "invocationId": "e-1e5563cd-2f2e-4a4f-9f1e-9e3d5ec7a7f8",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "happiness",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "0e14886a-6e89-4218-be51-385379584ad0",
+      "timestamp": 1793633953.7544837
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Ладно, не буду мешать."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-ae0de02f-01c2-43e6-901b-20db66052765",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "09b375af-c302-4bc4-82ea-e480ea414978",
+      "timestamp": 1793633995.0120578
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Ладно, не буду мешать."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 9,
+        "promptTokenCount": 207,
+        "totalTokenCount": 216
+      },
+      "invocationId": "e-ae0de02f-01c2-43e6-901b-20db66052765",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "neutral",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "a4807e34-b683-4c0f-a539-48f437be3f9c",
+      "timestamp": 1793633995.0255783
+    },
+    {
+      "content": {
+        "parts": [
+          {
+            "text": "Хорошо, до связи."
+          }
+        ],
+        "role": "user"
+      },
+      "invocationId": "e-92e81e41-98cb-45c2-8f6e-f1129958c6be",
+      "author": "user",
+      "actions": {
+        "stateDelta": {},
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": ""
+      },
+      "id": "ddf01fff-b5ba-4d16-b991-dd8a288be1d3",
+      "timestamp": 1793634013.071454
+    },
+    {
+      "modelVersion": "deepseek/deepseek-v4.1-flash",
+      "content": {
+        "parts": [
+          {
+            "text": "Хорошо, до связи."
+          }
+        ],
+        "role": "model"
+      },
+      "partial": false,
+      "finishReason": "STOP",
+      "usageMetadata": {
+        "cachedContentTokenCount": 0,
+        "candidatesTokenCount": 7,
+        "promptTokenCount": 196,
+        "totalTokenCount": 203
+      },
+      "invocationId": "e-92e81e41-98cb-45c2-8f6e-f1129958c6be",
+      "author": "echo_agent",
+      "actions": {
+        "stateDelta": {
+          "current_emotion": "happiness",
+          "_processed": false
+        },
+        "artifactDelta": {},
+        "requestedAuthConfigs": {},
+        "requestedToolConfirmations": {}
+      },
+      "nodeInfo": {
+        "path": "echo_agent@1"
+      },
+      "id": "307a0a4c-baf8-48a7-9da3-d8728754ede5",
+      "timestamp": 1793634013.0857048
+    }
+  ],
+  "lastUpdateTime": 1793634013.0857048
+}

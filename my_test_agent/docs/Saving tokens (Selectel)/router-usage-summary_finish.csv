@@ -1,0 +1,2 @@
+﻿model_public_id,api_key_prefix,gateway_id,input_tokens,cached_input_tokens,cache_write_tokens,output_tokens,reasoning_tokens,cost_rub
+deepseek/deepseek-v4.1-flash,sk-sl-v1-c213a19,gw-jn7e0xedxmxwzqhf24xm334c5n8fa83h,7962,1152,0,955,704,0.206989185

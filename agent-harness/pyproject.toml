@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-harness"
+version = "0.1.0"
+description = "Универсальная обвязка для LLM-агентов (экономия, память, эмоции, безопасность)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+adk = ["google-adk>=2.13.0", "litellm>=1.84", "transformers>=4.40", "torch"]
+nlp = ["transformers>=4.40", "torch"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -31,3 +31,4 @@ logs/
 *.jsonl
 *.sh
 my_test_agent/.env_bak
+/home/itshark/Programming/Python/AI Agents/create-lib-scripts.sh

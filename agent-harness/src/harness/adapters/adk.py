@@ -22,12 +22,14 @@ class ADKAgentCallbacks:
         storage: ColdStorage | None = None,
         window: SlidingWindow | None = None,
         tone_hints: dict | None = None,
+        guards: list | None = None,
     ):
         self.analyzer = analyzer
         self.sparsifier = sparsifier
         self.storage = storage
         self.window = window
         self.tone_hints = tone_hints or {}
+        self.guards = guards or []
         self.flag_key = "_processed"
 
     def _event_to_text(self, event) -> str:
@@ -115,6 +117,17 @@ class ADKAgentCallbacks:
         
         # Поднимаем флаг
         callback_context.state[self.flag_key] = True
+
+    def before_tool(self, tool, args, tool_context):
+        """Вызывается ДО выполнения инструмента. Проверяет guards."""
+        return next(
+            (
+                {"error": f"Tool '{tool.name}' blocked by security guard."}
+                for guard in self.guards
+                if not guard.check(tool.name, args, {})
+            ),
+            None,
+        )
 
     def after_model(self, callback_context: CallbackContext, llm_response: LlmResponse):
         """Вызывается ПОСЛЕ ответа модели."""

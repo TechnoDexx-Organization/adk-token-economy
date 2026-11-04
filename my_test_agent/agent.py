@@ -8,7 +8,7 @@ from google.adk.models.lite_llm import LiteLlm
 from harness import (
     ColdStorage,
     EmotionAnalyzer,
-    #SafeToolGuard,
+    ShellCommandGuard,  # <--- Заменили SafeToolGuard на ShellCommandGuard
     SlidingWindow,
     TextSparsifier,
 )
@@ -76,6 +76,9 @@ sparsifier = TextSparsifier()
 storage = ColdStorage(BASE_DIR)
 window = SlidingWindow(max_events=10)
 
+# Инициализируем защиту shell-команд
+shell_guard = ShellCommandGuard()
+
 # 2. Собираем адаптер для ADK
 callbacks = ADKAgentCallbacks(
     analyzer=analyzer,
@@ -83,6 +86,7 @@ callbacks = ADKAgentCallbacks(
     storage=storage,
     window=window,
     tone_hints=TONE_HINTS,
+    guards=[shell_guard], # <--- Передаем защиту
 )
 
 # 3. Создаем агента
@@ -91,7 +95,8 @@ root_agent = Agent(
     name="echo_agent",
     description="Echo agent with universal harness.",
     instruction=get_static_instruction,
-    tools=[],
+    tools=[], # Пока пусто. Когда добавишь run_shell_command - защита сработает.
     before_model_callback=callbacks.before_model,
     after_model_callback=callbacks.after_model,
+    before_tool_callback=callbacks.before_tool, # <--- Подключаем колбэк для инструментов
 )

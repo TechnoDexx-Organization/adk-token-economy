@@ -1,0 +1,23 @@
+# Байт-код и кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Артефакты сборки
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Окружения
+.venv/
+venv/
+env/
+
+# Настройки IDE
+.vscode/
+.idea/
+
+# Секреты (на всякий случай)
+.env

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "token-economy"
+version = "0.1.0"
+description = "Библиотека для экономии токенов в ADK (сушка, окно, ледник)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "google-adk>=2.13.0",
+    "litellm>=1.84",
+    "transformers>=4.40",
+    "python-dotenv",
+    "torch"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

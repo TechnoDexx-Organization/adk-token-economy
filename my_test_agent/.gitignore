@@ -1,2 +1,32 @@
-.env*
+# Байт-код и кэш Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Артефакты сборки
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+
+# Окружения
+.venv/
+venv/
+env/
+
+# Настройки IDE
+.vscode/
+.idea/
 .adk/
+# Секреты (на всякий случай)
+.env*
+
+# Файлы логов
+logs/
+
+# Прочие файлы
+*.zip
+*.tar.gz
+*.jsonl
+*.sh

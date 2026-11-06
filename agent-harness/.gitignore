@@ -1,0 +1,20 @@
+# Кэши Python и инструментов
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.ruff_cache/
+
+# Артефакты сборки пакета
+build/
+dist/
+*.egg-info/
+
+# Локальное окружение (если решат держать venv рядом с пакетом)
+.venv/
+venv/
+
+# Артефакты экспериментов: ледник и замеры кэша — данные прогонов, не код
+cold_storage.jsonl
+cache_probe_*.jsonl

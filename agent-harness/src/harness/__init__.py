@@ -6,6 +6,7 @@ from .modules.analyzer import EmotionAnalyzer
 from .modules.guard import SafeToolGuard, ShellCommandGuard
 from .modules.sparsifier import TextSparsifier
 from .modules.storage import ColdStorage
+from .modules.tokens import TokenCounter
 from .modules.window import SlidingWindow
 
 __all__ = [
@@ -18,5 +19,6 @@ __all__ = [
     "ShellCommandGuard",
     "SlidingWindow",
     "TextSparsifier",
+    "TokenCounter",
     "ToolGuard",
 ]

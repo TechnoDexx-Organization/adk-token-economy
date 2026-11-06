@@ -15,6 +15,11 @@ dependencies = [
 [project.optional-dependencies]
 adk = ["google-adk>=2.13.0", "litellm>=1.84", "transformers>=4.40", "torch"]
 nlp = ["transformers>=4.40", "torch"]
+test = ["pytest>=8.0", "tiktoken>=0.7"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

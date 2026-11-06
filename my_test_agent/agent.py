@@ -74,7 +74,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 analyzer = EmotionAnalyzer()
 sparsifier = TextSparsifier()
 storage = ColdStorage(BASE_DIR)
-window = SlidingWindow(max_events=10)
+window = SlidingWindow(
+    max_messages=10,          # режим замера: последние 10 сообщений
+    max_tokens=12_000,        # бюджет окна: старые сообщения вылетают по токенам
+    max_message_tokens=1_500, # потолок на ОДНО сообщение: голова + хвост
+)
+# window = SlidingWindow(max_turns=10)   # альтернатива: 10 ходов (шире, но связнее)
 
 # Инициализируем защиту shell-команд
 shell_guard = ShellCommandGuard()

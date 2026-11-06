@@ -206,8 +206,9 @@ class ADKAgentCallbacks:
         if self._role_of(event) == "user":
             text = self._sparse_cache.get(key, text)
 
-        if self.window:
-            compacted = self.window.compact(text)
+        window = self.window
+        if window is not None:
+            compacted = window.compact(text)
             if compacted != text:
                 self._log_cap_manifest(event, text, compacted)
                 text = compacted
@@ -236,13 +237,17 @@ class ADKAgentCallbacks:
 
     def _select_events(self, session) -> list:
         events = [event for event in (session.events or []) if self._has_parts(event)]
-        if not self.window:
+        window = self.window
+        if window is None:
             return events
-        return self.window.select(events, size=self._final_size)
+        return window.select(events, size=self._final_size)
 
     def _final_size(self, event) -> int:
         """Размер события в токенах после обработки — для бюджета окна."""
-        return self.window.count(self._final_text(event))
+        window = self.window
+        if window is None:
+            return 0
+        return window.count(self._final_text(event))
 
     def _build_contents(self, events: list) -> list:
         """
@@ -308,10 +313,13 @@ class ADKAgentCallbacks:
         # ШАГ 4 — тон.
         self._apply_tone_hint(new_contents, callback_context)
 
-        mode = self.window.describe() if self.window else "вся история"
-        total_tokens = sum(
-            self.window.count(self._final_text(event)) for event in selected
-        ) if self.window else 0
+        window = self.window
+        if window is not None:
+            mode = window.describe()
+            total_tokens = sum(window.count(self._final_text(event)) for event in selected)
+        else:
+            mode = "вся история"
+            total_tokens = 0
         print(f"=== КОНТЕКСТ ({mode}; сообщений: {len(new_contents)}; ~{total_tokens} токенов) ===")
         llm_request.contents = new_contents
 

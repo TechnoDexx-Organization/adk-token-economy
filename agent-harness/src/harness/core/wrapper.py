@@ -1,13 +1,15 @@
 from typing import Any
-from .interfaces import PreProcessor, PostProcessor, ToolGuard
+
+from .interfaces import PostProcessor, PreProcessor, ToolGuard
+
 
 class AgentWrapper:
     def __init__(
         self,
         agent: Any,
-        pre_processors: list[PreProcessor] = None,
-        post_processors: list[PostProcessor] = None,
-        guards: list[ToolGuard] = None,
+        pre_processors: list[PreProcessor] | None = None,
+        post_processors: list[PostProcessor] | None = None,
+        guards: list[ToolGuard] | None = None,
     ):
         self.agent = agent
         self.pre_processors = pre_processors or []
@@ -28,7 +30,7 @@ class AgentWrapper:
             processed = po.process(processed, context)
         return processed
 
-    def invoke(self, text: str, context: dict = None) -> str:
+    def invoke(self, text: str, context: dict | None = None) -> str:
         """Универсальный метод вызова любого агента."""
         if context is None:
             context = {}

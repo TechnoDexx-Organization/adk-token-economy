@@ -8,7 +8,7 @@ class EmotionAnalyzer:
                 model="Aniemore/rubert-tiny2-russian-emotion-detection",
             )
             print("✅ Модель эмоционального анализа загружена")
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 — падение модели не должно ронять агента
             self.pipeline = None
             print(f"⚠️ Не удалось загрузить модель: {e}")
 
@@ -18,5 +18,5 @@ class EmotionAnalyzer:
         try:
             result = self.pipeline(text, truncation=True, max_length=512)[0]
             return result["label"]
-        except Exception:
+        except Exception:  # noqa: BLE001 — на любой сбой классификатора отвечаем нейтрально
             return "neutral"

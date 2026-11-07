@@ -2,7 +2,8 @@
 import json
 
 from conftest import make_event
-from google.genai.types import Part
+from google.genai.types import FunctionCall, Part
+
 from harness.adapters.adk import ADKAgentCallbacks
 from harness.modules.storage import ColdStorage
 from harness.modules.window import SlidingWindow
@@ -40,7 +41,7 @@ class FakeContext:
 
 class FakeRequest:
     def __init__(self):
-        self.contents = None
+        self.contents: list = []
 
 
 def build(events, window=None, storage=None, analyzer=None, sparsifier=None):
@@ -146,7 +147,7 @@ def test_long_message_is_capped_and_manifested(tmp_path):
 
 
 def test_function_call_parts_are_preserved(tmp_path):
-    call_part = Part(function_call={"name": "run_shell_command", "args": {"cmd": "ls"}})
+    call_part = Part(function_call=FunctionCall(name="run_shell_command", args={"cmd": "ls"}))
     events = [
         make_event("user", "сделай что-нибудь", "inv1"),
         make_event("model", "", "inv1", parts=[call_part]),

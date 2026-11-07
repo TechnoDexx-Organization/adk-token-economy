@@ -26,6 +26,18 @@ class TokenCounter:
         """True, если считаем настоящим токенизатором, а не по символам."""
         return self._encoding is not None
 
+    def encode(self, text: str) -> list[int] | None:
+        """Токены текста; None, если токенизатор недоступен."""
+        if self._encoding is None:
+            return None
+        return self._encoding.encode(text, disallowed_special=())
+
+    def decode(self, ids: list[int]) -> str:
+        """Обратное преобразование токенов в текст."""
+        if self._encoding is None:
+            raise RuntimeError("decode вызван без токенизатора")
+        return self._encoding.decode(ids)
+
     def count(self, text: str) -> int:
         if not text:
             return 0

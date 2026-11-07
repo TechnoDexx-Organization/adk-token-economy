@@ -115,12 +115,15 @@ class SlidingWindow(PreProcessor):
 
     def _trim_to_budget(self, events: list, size=None) -> list:
         """Оставляет с конца столько событий, сколько влезает в бюджет."""
+        budget = self.max_tokens
+        if budget is None or budget <= 0:
+            return list(events)
         measure = size or self._default_size
         kept: list = []
         total = 0
         for event in reversed(events):
             cost = measure(event)
-            if kept and total + cost > self.max_tokens:
+            if kept and total + cost > budget:
                 break
             kept.append(event)
             total += cost
@@ -163,13 +166,12 @@ class SlidingWindow(PreProcessor):
         """Берёт примерно `limit` токенов с начала или с конца строки."""
         if limit <= 0:
             return ""
-        if self.counter.exact:
-            encoding = self.counter._encoding  # нужен разрез по токенам, а не по символам
-            ids = encoding.encode(text, disallowed_special=())
+        ids = self.counter.encode(text)
+        if ids is not None:
             if len(ids) <= limit:
                 return text
             chunk = ids[:limit] if from_start else ids[-limit:]
-            return encoding.decode(chunk)
+            return self.counter.decode(chunk)
 
         # Без токенизатора — режем по символам.
         chars = int(limit * self.counter.chars_per_token)

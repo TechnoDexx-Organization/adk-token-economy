@@ -2,6 +2,7 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import LlmRequest, LlmResponse
 from google.genai.types import Content, Part
 
+
 class AgentCallbacks:
     def __init__(
         self,
@@ -24,6 +25,7 @@ class AgentCallbacks:
         return "".join(part.text for part in event.content.parts if part.text)
 
     def before_model(self, callback_context: CallbackContext, llm_request: LlmRequest):
+        # sourcery skip: low-code-quality
         if callback_context.state.get(self.flag_key):
             return
         session = callback_context.session

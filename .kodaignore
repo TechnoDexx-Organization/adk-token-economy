@@ -1,0 +1,13 @@
+# Индексация кодовой базы Koda: не тащим сырые логи и бинарники в контекст.
+# Файлы отсюда агент всё равно может прочитать по прямому запросу (@file / read_file).
+
+# Сырые прогоны кэша и биллинговые выгрузки — нужны только как источник цифр в отчётах
+my_test_agent/docs/Saving tokens (Selectel)/
+my_test_agent/docs/Saving tokens (Yandex)/
+my_test_agent/docs/router-usage-summary*.csv
+
+# Локальные артефакты ADK (сессии/хранилище агента), воспроизводимый мусор
+my_test_agent/.adk/
+
+# Но живая документация по архитектуре остаётся в индексе
+!my_test_agent/docs/Architecture.md

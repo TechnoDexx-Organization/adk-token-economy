@@ -29,4 +29,3 @@ logs/
 *.zip
 *.tar.gz
 *.jsonl
-*.sh

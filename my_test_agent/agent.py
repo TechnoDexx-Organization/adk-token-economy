@@ -1,4 +1,6 @@
 import os
+import pathlib
+import subprocess
 
 from dotenv import load_dotenv
 from google.adk.agents import Agent
@@ -8,11 +10,12 @@ from google.adk.models.lite_llm import LiteLlm
 from harness import (
     ColdStorage,
     EmotionAnalyzer,
-    ShellCommandGuard,  # <--- Заменили SafeToolGuard на ShellCommandGuard
+    ShellCommandGuard,
     SlidingWindow,
     TextSparsifier,
 )
 from harness.adapters.adk import ADKAgentCallbacks
+from harness.modules.skills import build_safe_skill_toolset
 
 load_dotenv()
 
@@ -57,12 +60,39 @@ def get_llm_model():
 def get_static_instruction(context) -> str:
     """Статичная инструкция для кэширования."""
     return (
-        "You are an echo agent. Forward the user's messages. "
-        "IMPORTANT: You are running in a token-expensive environment. "
-        "DO NOT call any tools. Just output the user's exact text. "
-        "Minimize the number of tokens in your responses. "
-        "Keep your thoughts short. Do not over-explain. "
+        "You are an AI assistant running in a token-expensive environment. "
+        "You have access to specialized skills (tools) and a shell command executor. "
+        "If the user asks to check the environment, install packages, or run scripts, "
+        "USE your skills to get the job done. You can read skill instructions, "
+        "read skill resources, and execute scripts using the `run_shell_command` tool. "
+        "Otherwise, answer the user's questions directly. "
+        "Keep your thoughts short. Minimize the number of tokens in your responses."
     )
+
+# === ИНСТРУМЕНТ ДЛЯ ВЫПОЛНЕНИЯ КОМАНД ===
+def run_shell_command(command: str) -> str:
+    """Выполняет shell-команду.
+    
+    Args:
+        command: Команда для выполнения (например, 'ls -la' или 'bash script.sh').
+    """
+    try:
+        # Выполняем команду с таймаутом (чтобы не зависнуть)
+        result = subprocess.run(
+            command, 
+            check=False, shell=True, 
+            capture_output=True, 
+            text=True, 
+            timeout=15
+        )
+        output = result.stdout.strip()
+        if result.stderr:
+            output += f"\n[STDERR]: {result.stderr.strip()}"
+        return output or "Команда выполнена успешно (нет вывода)."
+    except subprocess.TimeoutExpired:
+        return "❌ Ошибка: Команда превысила лимит времени (15 секунд)."
+    except Exception as e:  # noqa: BLE001
+        return f"❌ Ошибка выполнения: {e!s}"
 
 
 # ==========================================
@@ -75,13 +105,10 @@ analyzer = EmotionAnalyzer()
 sparsifier = TextSparsifier()
 storage = ColdStorage(BASE_DIR)
 window = SlidingWindow(
-    max_messages=10,          # режим замера: последние 10 сообщений
-    max_tokens=12_000,        # бюджет окна: старые сообщения вылетают по токенам
-    max_message_tokens=1_500, # потолок на ОДНО сообщение: голова + хвост
+    max_messages=10,
+    max_tokens=12_000,
+    max_message_tokens=1_500,
 )
-# window = SlidingWindow(max_turns=10)   # альтернатива: 10 ходов (шире, но связнее)
-
-# Инициализируем защиту shell-команд
 shell_guard = ShellCommandGuard()
 
 # 2. Собираем адаптер для ADK
@@ -91,17 +118,30 @@ callbacks = ADKAgentCallbacks(
     storage=storage,
     window=window,
     tone_hints=TONE_HINTS,
-    guards=[shell_guard], # <--- Передаем защиту
+    guards=[shell_guard], # Наш охранник начеку!
 )
 
-# 3. Создаем агента
+# 3. Загружаем Skills (Навыки)
+skills_dir = pathlib.Path(BASE_DIR) / "skills"
+tools_list = [run_shell_command] # <--- Добавляем инструмент выполнения команд
+
+if skills_dir.exists():
+    print(f"📦 Загрузка навыков из {skills_dir}...")
+    try:
+        my_skill_toolset = build_safe_skill_toolset(skills_dir)
+        tools_list.append(my_skill_toolset)
+        print("✅ Навыки успешно загружены и проверены!")
+    except Exception as e:  # noqa: BLE001
+        print(f"❌ Ошибка при загрузке навыков: {e}")
+
+# 4. Создаем агента
 root_agent = Agent(
     model=get_llm_model(),
     name="echo_agent",
-    description="Echo agent with universal harness.",
+    description="Echo agent with universal harness and skills.",
     instruction=get_static_instruction,
-    tools=[], # Пока пусто. Когда добавишь run_shell_command - защита сработает.
+    tools=tools_list, # <--- Теперь здесь и навыки, и исполнитель команд
     before_model_callback=callbacks.before_model,
     after_model_callback=callbacks.after_model,
-    before_tool_callback=callbacks.before_tool, # <--- Подключаем колбэк для инструментов
+    before_tool_callback=callbacks.before_tool, # <--- Guard проверит run_shell_command!
 )

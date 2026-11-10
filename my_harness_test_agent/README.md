@@ -1,12 +1,12 @@
-# my_test_agent — экспериментальный ADK-агент по экономии токенов
+# my_harness_test_agent — экспериментальный ADK-агент (Экономия токенов + Secure Skills)
 
-Агент на **Google ADK** + **LiteLLM**, цель которого — снижение расхода токенов
-при длинных диалогах без потери качества ответа. Агент формально является
-«эхо-агентом» (повторяет текст пользователя), что позволяет чисто измерять
-эффект от оптимизаций контекста.
+Агент на **Google ADK** + **LiteLLM**. Изначально создавался как «эхо-агент» для 
+чистого замера экономии токенов при длинных диалогах. Однако в процессе эволюции 
+превратился в **безопасную среду выполнения (Secure Agent Runtime)**, которая 
+умеет динамически подгружать навыки (Skills) и выполнять shell-команды, 
+не рискуя сломать хост-систему.
 
-Здесь остаётся только сборка агента и настройки провайдеров. Все механизмы
-живут в отдельном пакете [`agent-harness`](../agent-harness).
+Все основные механизмы живут в отдельном пакете [`agent-harness`](../agent-harness).
 
 ## Что делает агент
 
@@ -36,11 +36,20 @@
    координат вырезаны. Оригинал восстанавливается точь-в-точь.
 6. **Спасательный круг** — при пустом ответе или сбое API в ответ подставляется
    последнее сообщение пользователя, счётчик в `state["error_count"]`.
-7. **Защита инструментов** — `ShellCommandGuard` блокирует опасные команды
-   (`rm -rf`, `mkfs`, fork-бомбы, `curl | bash`).
-8. **Переключение провайдеров** (`get_llm_model`) — по переменной `AI_PROVIDER`:
-   - `yandex` (по умолчанию) — Yandex AI Studio;
-   - `selectel` — Selectel AI Gateway.
+7. **Защита инструментов** (`ShellCommandGuard`) — блокирует опасные команды
+   (`rm -rf`, `mkfs`, fork-бомбы, `curl | bash`). **Обновление:** теперь Guard 
+   блокирует и ресурсоемкие команды вроде `find /` или рекурсивного `grep` от корня.
+   Кроме того, Guard используется как **Pre-flight Validation** при загрузке навыков.
+8. **Динамические навыки (Skills)** — `build_safe_skill_toolset` сканирует папку 
+   `skills/`, находит файлы `SKILL.md`, проверяет все вложенные скрипты через 
+   `ShellCommandGuard` и формирует `SkillToolset`. Агент загружает инструкции 
+   (Lazy Loading) только тогда, когда они реально нужны.
+9. **Безопасное выполнение скриптов** (`run_shell_command`) — агент получил «руки». 
+   Инструмент выполняет команды с таймаутом в **15 секунд**, принудительно 
+   переходя в рабочую директорию `BASE_DIR` (защита от выполнения в корне системы).
+10. **Переключение провайдеров** (`get_llm_model`) — по переменной `AI_PROVIDER`:
+    - `yandex` (по умолчанию) — Yandex AI Studio;
+    - `selectel` — Selectel AI Gateway.
 
 ## Как это работает при каждом ходе
 
@@ -55,8 +64,14 @@ before_model — четыре независимых шага
   4. ТОН      [Tone hint: ...] в конец последнего сообщения окна
         │
         ▼
-     LLM (статичная инструкция, кэшируемая)
+     LLM (видит статичную инструкцию + список доступных Skills)
         │
+        ├─ (если нужен навык) ─> Вызов load_skill / load_skill_resource
+        │
+        ├─ (если нужна команда) ─> before_tool (Проверка ShellCommandGuard)
+        │                              │
+        │                              ▼
+        │                         run_shell_command (timeout=15s, cwd=BASE_DIR)
         ▼
 after_model
   • пусто/сбой → подставить последнее сообщение пользователя
@@ -95,11 +110,16 @@ after_model
 ## Структура проекта
 
 ```
-my_test_agent/
-├── agent.py                # сборка: провайдер, TONE_HINTS, окно
+my_harness_test_agent/
+├── agent.py                # сборка: провайдер, TONE_HINTS, окно, tools, Skills
 ├── measure_tokens_local.py # локальный замер токенов (DeepSeek-токенизатор + tiktoken)
 ├── cache_probe.py          # замер prompt/cached tokens по провайдерам
 ├── __init__.py
+├── skills/                 # Папка с динамическими навыками
+│   └── python-env/         # Пример навыка
+│       ├── SKILL.md        # Инструкции и метаданные навыка
+│       └── scripts/
+│           └── check_uv.sh # Исполняемый скрипт (проверяется Guard'ом)
 ├── .env                    # ключи провайдеров (не в git)
 ├── .adk/                   # сессии ADK (session.db)
 ├── cold_storage.jsonl      # ледник (генерируется)
@@ -109,19 +129,21 @@ my_test_agent/
 ```text
 agent-harness/
 ├── src/harness/
-│   ├── modules/            # window, tokens, sparsifier, analyzer, storage, guard
+│   ├── modules/            # window, tokens, sparsifier, analyzer, storage, guard, skills
 │   └── adapters/adk.py     # перевод модулей на колбэки ADK
-└── tests/                  # 25 тестов, без сети и без ключей
+└── tests/                  # тесты, без сети и без ключей
 ```
 
 ## Установка
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
+# Используем uv (современный и быстрый менеджер пакетов)
+uv venv
+source .venv/bin/activate
 
 # harness ставится в editable-режиме из соседней папки
-pip install -e ../agent-harness[adk]
-pip install tiktoken sentencepiece
+uv pip install -e ../agent-harness[adk]
+uv pip install tiktoken sentencepiece
 ```
 
 Первый запуск скачает модель эмоций (~25 МБ) из HuggingFace.
@@ -145,8 +167,8 @@ SELECTEL_API_KEY=...
 ## Запуск
 
 ```bash
-adk web                 # веб-интерфейс ADK Dev UI
-adk run my_test_agent   # интерактивный чат в терминале
+adk web                       # веб-интерфейс ADK Dev UI
+adk run my_harness_test_agent # интерактивный чат в терминале
 ```
 
 Замеры и проверки:
@@ -154,7 +176,7 @@ adk run my_test_agent   # интерактивный чат в терминал�
 ```bash
 python measure_tokens_local.py   # токенизатор: обычный / разреженный / предикаты
 python cache_probe.py            # prompt/cached tokens по провайдерам
-cd ../agent-harness && pytest    # 25 тестов, сеть не нужна
+cd ../agent-harness && pytest    # тесты, сеть не нужна
 ```
 
 ## Замечания
@@ -163,3 +185,6 @@ cd ../agent-harness && pytest    # 25 тестов, сеть не нужна
   модель не увидит вырезанное, даже если оно важно. Оригинал остаётся в леднике.
 - Данные экспериментов (CSV, JSON, отчёты) лежат в `docs/`.
 - Эмодзи-вывод и `print`-логирование — для наглядности эксперимента, не для продакшена.
+- **Безопасность:** ЛЮБЫЕ внешние скрипты из папки `skills/` проходят проверку через
+  `ShellCommandGuard` до того, как агент получит к ним доступ. Выполнение команд 
+  ограничено таймаутом (15 секунд) и рабочей директорией (`BASE_DIR`).

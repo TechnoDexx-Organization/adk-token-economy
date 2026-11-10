@@ -65,9 +65,15 @@ def get_static_instruction(context) -> str:
         "If the user asks to check the environment, install packages, or run scripts, "
         "USE your skills to get the job done. You can read skill instructions, "
         "read skill resources, and execute scripts using the `run_shell_command` tool. "
+        "NEVER use 'find /' or search the whole filesystem. Only run commands inside the current project. "
         "Otherwise, answer the user's questions directly. "
         "Keep your thoughts short. Minimize the number of tokens in your responses."
     )
+
+# ==========================================
+# СБОРКА АГЕНТА ИЗ КОМПОНЕНТОВ
+# ==========================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # === ИНСТРУМЕНТ ДЛЯ ВЫПОЛНЕНИЯ КОМАНД ===
 def run_shell_command(command: str) -> str:
@@ -77,13 +83,14 @@ def run_shell_command(command: str) -> str:
         command: Команда для выполнения (например, 'ls -la' или 'bash script.sh').
     """
     try:
-        # Выполняем команду с таймаутом (чтобы не зависнуть)
+        # Выполняем команду с таймаутом и рабочей директорией BASE_DIR
         result = subprocess.run(
             command, 
             check=False, shell=True, 
             capture_output=True, 
             text=True, 
-            timeout=15
+            timeout=15,
+            cwd=BASE_DIR  # <--- ВАЖНОЕ ИСПРАВЛЕНИЕ!
         )
         output = result.stdout.strip()
         if result.stderr:
@@ -94,11 +101,6 @@ def run_shell_command(command: str) -> str:
     except Exception as e:  # noqa: BLE001
         return f"❌ Ошибка выполнения: {e!s}"
 
-
-# ==========================================
-# СБОРКА АГЕНТА ИЗ КОМПОНЕНТОВ
-# ==========================================
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 1. Инициализируем модули
 analyzer = EmotionAnalyzer()
@@ -118,12 +120,12 @@ callbacks = ADKAgentCallbacks(
     storage=storage,
     window=window,
     tone_hints=TONE_HINTS,
-    guards=[shell_guard], # Наш охранник начеку!
+    guards=[shell_guard],
 )
 
 # 3. Загружаем Skills (Навыки)
 skills_dir = pathlib.Path(BASE_DIR) / "skills"
-tools_list = [run_shell_command] # <--- Добавляем инструмент выполнения команд
+tools_list = [run_shell_command]
 
 if skills_dir.exists():
     print(f"📦 Загрузка навыков из {skills_dir}...")
@@ -140,8 +142,8 @@ root_agent = Agent(
     name="echo_agent",
     description="Echo agent with universal harness and skills.",
     instruction=get_static_instruction,
-    tools=tools_list, # <--- Теперь здесь и навыки, и исполнитель команд
+    tools=tools_list,
     before_model_callback=callbacks.before_model,
     after_model_callback=callbacks.after_model,
-    before_tool_callback=callbacks.before_tool, # <--- Guard проверит run_shell_command!
+    before_tool_callback=callbacks.before_tool,
 )

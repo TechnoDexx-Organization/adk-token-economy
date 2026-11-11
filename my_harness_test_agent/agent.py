@@ -4,6 +4,7 @@ import pathlib
 from dotenv import load_dotenv
 from google.adk.agents import Agent
 from google.adk.models.lite_llm import LiteLlm
+from google.adk.tools import ToolContext
 
 # Импортируем из нашей универсальной библиотеки agent-harness
 from harness import (
@@ -19,6 +20,11 @@ from harness.modules.secret_editor import SecretEditor
 from harness.modules.skills import build_safe_skill_toolset
 
 load_dotenv()
+
+# === ХЕЛПЕР ДЛЯ ЧТЕНИЯ ФЛАГОВ ===
+def get_bool_env(key: str, default: bool = True) -> bool:
+    val = os.getenv(key, str(default)).lower()
+    return val in ("true", "1", "yes", "on")
 
 # === НАСТРОЙКА ТОНА ===
 TONE_HINTS = {
@@ -60,13 +66,23 @@ def get_llm_model():
 
 def get_static_instruction(context) -> str:
     """Статичная инструкция для кэширования."""
+    # Если HITL включен, добавляем инструкцию про него
+    hitl_instruction = ""
+    if get_bool_env("ENABLE_HITL", True):
+        hitl_instruction = (
+            "CRITICAL: Before executing `run_shell_command` or `write_file`, you MUST ask the user for permission. "
+            "When you try to call one of these tools, the system will block it and return a 'confirmation_required' message with an `args_hash`. "
+            "You must then output a message asking the user: 'Can I execute this command/write this file?'. "
+            "If the user says 'yes' or 'разрешаю', you must call `approve_action` with the tool name and hash, and then call the original tool again. "
+        )
+
     return (
         "You are an autonomous AI coding assistant running in a token-expensive environment. "
         "You have access to specialized skills (tools) and a shell command executor. "
         "You can read files using `read_file`, write code to files using `write_file`, "
         "and execute them using `run_shell_command` (e.g., `python script.py`). "
-        "When given a task, write the code, run it to test it, and if there are errors, "
-        "read the file, fix the errors, and try again. "
+        f"{hitl_instruction}"
+        "When given a task, write the code, run it to test it, and if there are errors, read the file, fix them, and try again. "
         "CRITICAL: NEVER write to system files, hidden config files, or outside the current project directory. "
         "CRITICAL: NEVER use 'find /' or search the whole filesystem. "
         "Keep your thoughts short. Minimize the number of tokens in your responses."
@@ -78,23 +94,33 @@ def get_static_instruction(context) -> str:
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 1. Инициализируем модули
-analyzer = EmotionAnalyzer()
-sparsifier = TextSparsifier()
-storage = ColdStorage(BASE_DIR)
-window = SlidingWindow(
-    max_messages=10,
-    max_tokens=12_000,
-    max_message_tokens=1_500,
-)
-shell_guard = ShellCommandGuard()
-file_tools = FileTools(BASE_DIR)  # <--- Наш новый модуль
+# 1. Инициализируем модули с учетом флагов
+analyzer = EmotionAnalyzer() if get_bool_env("ENABLE_EMOTION", True) else None
+sparsifier = TextSparsifier() if get_bool_env("ENABLE_SPARSIFIER", True) else None
+storage = ColdStorage(BASE_DIR) if get_bool_env("ENABLE_STORAGE", True) else None
 
-# 2. Инициализируем SecretEditor с умным вычислением пути
-allowlist_path = os.getenv("SECRET_ALLOWLIST_PATH")
-if allowlist_path and not os.path.isabs(allowlist_path):
-    allowlist_path = os.path.join(BASE_DIR, allowlist_path)
-secret_editor = SecretEditor(allowlist_path=allowlist_path)
+if get_bool_env("ENABLE_WINDOW", True):
+    window = SlidingWindow(
+        max_messages=10,
+        max_tokens=12_000,
+        max_message_tokens=1_500,
+    )
+else:
+    window = None
+
+shell_guard = ShellCommandGuard() if get_bool_env("ENABLE_GUARD", True) else None
+guards_list = [shell_guard] if shell_guard else []
+
+file_tools = FileTools(BASE_DIR)
+
+# 2. Инициализируем SecretEditor
+if get_bool_env("ENABLE_SECRET_EDITOR", True):
+    allowlist_path = os.getenv("SECRET_ALLOWLIST_PATH")
+    if allowlist_path and not os.path.isabs(allowlist_path):
+        allowlist_path = os.path.join(BASE_DIR, allowlist_path)
+    secret_editor = SecretEditor(allowlist_path=allowlist_path)
+else:
+    secret_editor = None
 
 # 3. Собираем адаптер для ADK
 callbacks = ADKAgentCallbacks(
@@ -103,17 +129,29 @@ callbacks = ADKAgentCallbacks(
     storage=storage,
     window=window,
     tone_hints=TONE_HINTS,
-    guards=[shell_guard],
+    guards=guards_list,
     secret_editor=secret_editor,
+    enable_hitl=get_bool_env("ENABLE_HITL", True), # Передаем флаг HITL
 )
 
-# 4. Загружаем Skills (Навыки) и собираем инструменты
+# 4. Инструмент для подтверждения действий (HITL)
+def approve_action(tool_name: str, args_hash: str, tool_context: ToolContext) -> str:
+    """Одобряет выполнение опасного действия (HITL)."""
+    state_key = f"hitl_approved_{tool_name}_{args_hash}"
+    tool_context.state[state_key] = True
+    return f"✅ Действие '{tool_name}' с хэшем {args_hash} одобрено пользователем. Вы можете снова вызвать этот инструмент."
+
+# 5. Загружаем Skills (Навыки) и собираем инструменты
 skills_dir = pathlib.Path(BASE_DIR) / "skills"
 tools_list = [
     file_tools.run_shell_command,
     file_tools.write_file,
     file_tools.read_file,
 ]
+
+# Добавляем approve_action только если HITL включен
+if get_bool_env("ENABLE_HITL", True):
+    tools_list.append(approve_action)
 
 if skills_dir.exists():
     print(f"📦 Загрузка навыков из {skills_dir}...")
@@ -124,11 +162,11 @@ if skills_dir.exists():
     except Exception as e:  # noqa: BLE001
         print(f"❌ Ошибка при загрузке навыков: {e}")
 
-# 5. Создаем агента
+# 6. Создаем агента
 root_agent = Agent(
     model=get_llm_model(),
     name="harness_test_agent",
-    description="Autonomous AI coding agent with universal harness and skills.",
+    description="Autonomous AI coding agent with universal harness, skills, and feature flags.",
     instruction=get_static_instruction,
     tools=tools_list,
     before_model_callback=callbacks.before_model,

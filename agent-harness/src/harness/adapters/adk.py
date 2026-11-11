@@ -6,9 +6,8 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import LlmRequest, LlmResponse
 from google.genai.types import Content, Part
 
-# Импортируем модули из нашей же библиотеки
 from ..modules.analyzer import EmotionAnalyzer
-from ..modules.secret_editor import SecretEditor  # <--- Добавлен импорт
+from ..modules.secret_editor import SecretEditor
 from ..modules.sparsifier import TextSparsifier
 from ..modules.storage import ColdStorage
 from ..modules.window import SlidingWindow
@@ -17,17 +16,6 @@ from ..modules.window import SlidingWindow
 class ADKAgentCallbacks:
     """
     Класс-адаптер, который транслирует логику Harness в колбэки Google ADK.
-
-    Четыре приёма работают независимо, каждый — в свой момент:
-
-        1. ЛЕДНИК   — при каждом ходе, все новые события, ДО обработки
-        2. АНАЛИЗ   — один раз на сообщение: эмоция + сушка (с манифестом)
-        3. ОКНО     — при сборке запроса: последние N ХОДОВ целиком
-        4. ТОН      — при сборке запроса: метка эмоции в конец последнего сообщения
-
-    Окно не зависит от того, подсушен ли текст, а сушка не зависит от того,
-    попадёт ли сообщение в окно: каждое сообщение обрабатывается один раз,
-    а результат запоминается.
     """
 
     def __init__(
@@ -38,7 +26,8 @@ class ADKAgentCallbacks:
         window: SlidingWindow | None = None,
         tone_hints: dict | None = None,
         guards: list | None = None,
-        secret_editor: SecretEditor | None = None, # <--- Добавлен аргумент
+        secret_editor: SecretEditor | None = None,
+        enable_hitl: bool = True,
     ):
         self.analyzer = analyzer
         self.sparsifier = sparsifier
@@ -46,12 +35,15 @@ class ADKAgentCallbacks:
         self.window = window
         self.tone_hints = tone_hints or {}
         self.guards = guards or []
-        self.secret_editor = secret_editor or SecretEditor() # <--- Инициализация
+        self.secret_editor = secret_editor or SecretEditor()
+        self.enable_hitl = enable_hitl
         self.flag_key = "_processed"
         self.ledger_key = "_ledger_upto"
 
-        # Кэши "посчитано один раз на событие". Живут столько же, сколько
-        # процесс; в state не кладём, чтобы не раздувать персистентную сессию.
+        # Список инструментов, которые требуют подтверждения (Human-in-the-Loop)
+        self.hitl_tools = {"run_shell_command", "write_file"}
+
+        # Кэши "посчитано один раз на событие"
         self._sparse_cache: dict[str, str] = {}
         self._emotion_cache: dict[str, str] = {}
         self._final_cache: dict[str, str] = {}
@@ -60,15 +52,12 @@ class ADKAgentCallbacks:
     # ─────────────────────────── утилиты ───────────────────────────
 
     def _event_to_text(self, event) -> str:
-        """Безопасно извлекает текст из события ADK."""
         if not event.content or not event.content.parts:
             return ""
         return "".join(part.text for part in event.content.parts if part.text)
 
     def _event_key(self, event) -> str:
-        """Стабильный ключ события: id, либо синтетический хэш для тестов."""
-        event_id = getattr(event, "id", "") or ""
-        if event_id:
+        if event_id := getattr(event, "id", "") or "":
             return event_id
         raw = f"{getattr(event, 'author', '')}|{getattr(event, 'invocation_id', '')}|{self._event_to_text(event)}"
         return "synthetic-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
@@ -78,25 +67,23 @@ class ADKAgentCallbacks:
 
     @staticmethod
     def _removed_spans(original: str, processed: str) -> list[dict]:
-        """Что именно вырезано из оригинала — в координатах оригинала."""
-        removed: list[dict] = []
         matcher = difflib.SequenceMatcher(None, original, processed, autojunk=False)
-        for tag, i1, i2, _j1, _j2 in matcher.get_opcodes():
-            if tag in ("delete", "replace") and i2 > i1:
-                removed.append({"start": i1, "end": i2, "text": original[i1:i2]})
+        removed: list[dict] = [
+            {"start": i1, "end": i2, "text": original[i1:i2]}
+            for tag, i1, i2, _j1, _j2 in matcher.get_opcodes()
+            if tag in ("delete", "replace") and i2 > i1
+        ]
         return removed
 
     # ─────────────────────── шаг 1: ледник ───────────────────────
 
     @staticmethod
     def _has_parts(event) -> bool:
-        """Есть ли у события содержание: текст или вызов инструмента."""
         content = getattr(event, "content", None)
         return bool(content and getattr(content, "parts", None))
 
     @staticmethod
     def _tool_payload(event) -> str:
-        """Сериализует вызовы/ответы инструментов — чтобы они тоже попадали в ледник."""
         payload = []
         for part in getattr(event.content, "parts", []) or []:
             call = getattr(part, "function_call", None)
@@ -108,25 +95,22 @@ class ADKAgentCallbacks:
         return json.dumps(payload, ensure_ascii=False) if payload else ""
 
     def _ledger_new_events(self, session, callback_context: CallbackContext) -> None:
-        """Пишет в ледник все события, которых там ещё не было. Оригиналы, до обработки."""
         if not self.storage:
             return
 
         events = list(session.events or [])
         logged_upto = callback_context.state.get(self.ledger_key, 0) or 0
         if logged_upto > len(events):
-            # Сессия откатилась (rewind) — перечитываем журнал заново.
             logged_upto = 0
 
         for event in events[logged_upto:]:
             text = self._event_to_text(event)
             kind = "user_message" if self._role_of(event) == "user" else "model_message"
             if not text:
-                # Вызовы инструментов — тоже часть истории: храним как JSON.
                 text = self._tool_payload(event)
                 kind = "tool_event"
-                if not text:
-                    continue
+            if not text:
+                continue
             self.storage.log(
                 session.id,
                 self._role_of(event),
@@ -141,19 +125,15 @@ class ADKAgentCallbacks:
     # ──────────── шаг 2: анализ и сушка последнего сообщения ────────────
 
     def _process_last_user_message(self, session, callback_context: CallbackContext) -> str | None:
-        """
-        Обрабатывает ТОЛЬКО последнее сообщение пользователя.
-
-        Эмоция считается один раз на сообщение (а не по всей истории), текст
-        сушится один раз, результат кэшируется по event_id. Манифест изменений
-        уходит в ледник — так удалённое можно вернуть точь-в-точь.
-        """
-        last_user_event = None
-        for event in reversed(session.events or []):
-            if getattr(event, "author", "") == "user" and self._event_to_text(event):
-                last_user_event = event
-                break
-
+        last_user_event = next(
+            (
+                event
+                for event in reversed(session.events or [])
+                if getattr(event, "author", "") == "user"
+                and self._event_to_text(event)
+            ),
+            None,
+        )
         if last_user_event is None:
             return None
 
@@ -161,7 +141,6 @@ class ADKAgentCallbacks:
         key = self._event_key(last_user_event)
         invocation_id = getattr(last_user_event, "invocation_id", "") or ""
 
-        # Эмоция
         if self.analyzer:
             emotion = self._emotion_cache.get(key)
             if emotion is None:
@@ -169,7 +148,6 @@ class ADKAgentCallbacks:
                 self._emotion_cache[key] = emotion
             callback_context.state["current_emotion"] = emotion
 
-        # Сушка
         processed = original
         if self.sparsifier:
             cached = self._sparse_cache.get(key)
@@ -196,10 +174,6 @@ class ADKAgentCallbacks:
     # ───────────────────── шаг 3: окно ─────────────────────
 
     def _final_text(self, event) -> str:
-        """
-        Итоговый текст события: сушка (только если уже посчитана) + потолок
-        на сообщение. Считается один раз и кэшируется по event_id.
-        """
         key = self._event_key(event)
         cached = self._final_cache.get(key)
         if cached is not None:
@@ -220,7 +194,6 @@ class ADKAgentCallbacks:
         return text
 
     def _log_cap_manifest(self, event, original: str, processed: str) -> None:
-        """Манифест обрезки: какие координаты оригинала не попали в контекст."""
         if not self.storage:
             return
         head_length = processed.find("\n…[сокращено")
@@ -246,20 +219,10 @@ class ADKAgentCallbacks:
         return window.select(events, size=self._final_size)
 
     def _final_size(self, event) -> int:
-        """Размер события в токенах после обработки — для бюджета окна."""
         window = self.window
-        if window is None:
-            return 0
-        return window.count(self._final_text(event))
+        return 0 if window is None else window.count(self._final_text(event))
 
     def _build_contents(self, events: list) -> list:
-        """
-        Собирает Content для модели: текст берётся из итогового кэша (сушка +
-        потолок), а нетекстовые части (function_call / function_response)
-        сохраняются как есть.
-        
-        ЗДЕСЬ МЫ ПРИМЕНЯЕМ SECRET EDITOR.
-        """
         contents: list[Content] = []
         for event in events:
             content = event.content
@@ -270,8 +233,7 @@ class ADKAgentCallbacks:
             for part in content.parts:
                 if part.text:
                     final_text = self._final_text(event)
-                    # Применяем редактор секретов перед упаковкой в Part
-                    safe_text = self.secret_editor.redact(final_text)
+                    safe_text = self.secret_editor.redact(final_text) if self.secret_editor else final_text
                     parts.append(Part(text=safe_text))
                 else:
                     parts.append(part)
@@ -282,7 +244,6 @@ class ADKAgentCallbacks:
     # ─────────────────────── шаг 4: тон ───────────────────────
 
     def _apply_tone_hint(self, new_contents: list, callback_context: CallbackContext):
-        """Вставляет подсказку о тоне в конец последнего сообщения пользователя."""
         if not self.analyzer or not self.tone_hints:
             return
 
@@ -297,28 +258,22 @@ class ADKAgentCallbacks:
     # ─────────────────────── сборка ───────────────────────
 
     def before_model(self, callback_context: CallbackContext, llm_request: LlmRequest):
-        """Вызывается ДО запроса к модели."""
         session = callback_context.session
         if not session:
             return
 
-        # ШАГ 1 — ледник: всегда, чтобы не потерять tool_call'ы между шагами хода.
         self._ledger_new_events(session, callback_context)
 
-        # Защита от повторного наложения внутри одного хода.
         if callback_context.state.get(self.flag_key):
             return
 
         self._session_id = session.id
 
-        # ШАГ 2 — анализ и сушка последнего сообщения пользователя.
         self._process_last_user_message(session, callback_context)
 
-        # ШАГ 3 — окно по ходам.
         selected = self._select_events(session)
         new_contents = self._build_contents(selected)
 
-        # ШАГ 4 — тон.
         self._apply_tone_hint(new_contents, callback_context)
 
         window = self.window
@@ -334,25 +289,40 @@ class ADKAgentCallbacks:
         callback_context.state[self.flag_key] = True
 
     def before_tool(self, tool, args, tool_context):
-        """Вызывается ДО выполнения инструмента. Проверяет guards."""
-        return next(
-            (
-                {"error": f"Tool '{tool.name}' blocked by security guard."}
-                for guard in self.guards
-                if not guard.check(tool.name, args, {})
-            ),
-            None,
-        )
+        """Вызывается ДО выполнения инструмента. Проверяет guards и HITL."""
+        # 1. Проверка Guards (безопасность)
+        for guard in self.guards:
+            if not guard.check(tool.name, args, {}):
+                return {"error": f"Tool '{tool.name}' blocked by security guard."}
+
+        # 2. Проверка HITL (Human-in-the-Loop)
+        if self.enable_hitl and tool.name in self.hitl_tools:
+            args_str = json.dumps(args, sort_keys=True, ensure_ascii=False)
+            args_hash = hashlib.md5(args_str.encode("utf-8")).hexdigest()[:8]
+            state_key = f"hitl_approved_{tool.name}_{args_hash}"
+
+            if not tool_context.state.get(state_key):
+                return {
+                    "status": "confirmation_required",
+                    "message": (
+                        f"⚠️ HITL: Действие '{tool.name}' требует подтверждения пользователя. "
+                        f"Аргументы: {args}. "
+                        f"Спросите пользователя, разрешить ли это действие. "
+                        f"Если он согласен, вызовите инструмент `approve_action` с параметрами: "
+                        f"tool_name='{tool.name}', args_hash='{args_hash}'. "
+                        f"После этого вы сможете снова вызвать '{tool.name}'."
+                    )
+                }
+
+        return None
 
     def after_model(self, callback_context: CallbackContext, llm_response: LlmResponse):
-        """Вызывается ПОСЛЕ ответа модели."""
         is_empty = (
             not llm_response.content
             or not llm_response.content.parts
             or not any(p.text for p in llm_response.content.parts)
         )
 
-        # Спасательный круг при пустоте
         if is_empty:
             self._handle_empty_response(callback_context, llm_response)
             return
@@ -361,25 +331,21 @@ class ADKAgentCallbacks:
             part.function_call is not None for part in llm_response.content.parts
         )
 
-        # Логируем ответ
         if reply_text := "".join(part.text for part in llm_response.content.parts if part.text):
             print("=== ОТВЕТ МОДЕЛИ ===")
             print(reply_text)
             print("=" * 20)
 
-        # Логируем метрики кэша и токенов
         if llm_response.usage_metadata:
             cached = getattr(llm_response.usage_metadata, "cached_content_token_count", 0)
             prompt = getattr(llm_response.usage_metadata, "prompt_token_count", 0)
             print(f"📊 Метрики: prompt={prompt}, cached={cached}")
 
-        # Снимаем флаг, если это финальный ответ
         if not has_function_call:
             callback_context.state[self.flag_key] = False
             print("=== [after_model] финал, флаг снят ===")
 
     def _handle_empty_response(self, callback_context: CallbackContext, llm_response: LlmResponse):
-        """Спасательный круг: если модель вернула пустоту, подставляем оригинальный текст пользователя."""
         callback_context.state[self.flag_key] = False
         error_count = callback_context.state.get("error_count", 0) + 1
         callback_context.state["error_count"] = error_count

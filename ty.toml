@@ -1,0 +1,5 @@
+[environment]
+extra-paths = [
+    "agent-harness/src",
+    "my_harness_test_agent"
+]

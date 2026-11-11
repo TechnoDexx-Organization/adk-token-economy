@@ -8,6 +8,7 @@ from google.genai.types import Content, Part
 
 # Импортируем модули из нашей же библиотеки
 from ..modules.analyzer import EmotionAnalyzer
+from ..modules.secret_editor import SecretEditor  # <--- Добавлен импорт
 from ..modules.sparsifier import TextSparsifier
 from ..modules.storage import ColdStorage
 from ..modules.window import SlidingWindow
@@ -37,6 +38,7 @@ class ADKAgentCallbacks:
         window: SlidingWindow | None = None,
         tone_hints: dict | None = None,
         guards: list | None = None,
+        secret_editor: SecretEditor | None = None, # <--- Добавлен аргумент
     ):
         self.analyzer = analyzer
         self.sparsifier = sparsifier
@@ -44,6 +46,7 @@ class ADKAgentCallbacks:
         self.window = window
         self.tone_hints = tone_hints or {}
         self.guards = guards or []
+        self.secret_editor = secret_editor or SecretEditor() # <--- Инициализация
         self.flag_key = "_processed"
         self.ledger_key = "_ledger_upto"
 
@@ -254,6 +257,8 @@ class ADKAgentCallbacks:
         Собирает Content для модели: текст берётся из итогового кэша (сушка +
         потолок), а нетекстовые части (function_call / function_response)
         сохраняются как есть.
+        
+        ЗДЕСЬ МЫ ПРИМЕНЯЕМ SECRET EDITOR.
         """
         contents: list[Content] = []
         for event in events:
@@ -264,7 +269,10 @@ class ADKAgentCallbacks:
             parts: list[Part] = []
             for part in content.parts:
                 if part.text:
-                    parts.append(Part(text=self._final_text(event)))
+                    final_text = self._final_text(event)
+                    # Применяем редактор секретов перед упаковкой в Part
+                    safe_text = self.secret_editor.redact(final_text)
+                    parts.append(Part(text=safe_text))
                 else:
                     parts.append(part)
             if parts:

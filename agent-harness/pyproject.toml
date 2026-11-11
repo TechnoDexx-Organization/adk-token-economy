@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-harness"
-version = "0.1.0"
-description = "Универсальная обвязка для LLM-агентов (экономия, память, эмоции, безопасность)"
+version = "0.2.0"
+description = "Универсальная обвязка для LLM-агентов (экономия токенов, память, эмоции, безопасность, динамические навыки)"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -13,9 +13,21 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-adk = ["google-adk>=2.13.0", "litellm>=1.84", "transformers>=4.40", "torch"]
-nlp = ["transformers>=4.40", "torch"]
-test = ["pytest>=8.0", "tiktoken>=0.7"]
+adk = [
+    "google-adk>=2.13.0", 
+    "litellm>=1.84", 
+    "transformers>=4.40", 
+    "torch"
+]
+nlp = [
+    "transformers>=4.40", 
+    "torch"
+]
+dev = [
+    "pytest>=8.0", 
+    "tiktoken>=0.7",
+    "ruff>=0.3.0"
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -23,3 +35,11 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

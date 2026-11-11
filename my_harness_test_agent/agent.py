@@ -1,6 +1,5 @@
 import os
 import pathlib
-import subprocess
 
 from dotenv import load_dotenv
 from google.adk.agents import Agent
@@ -10,6 +9,7 @@ from google.adk.models.lite_llm import LiteLlm
 from harness import (
     ColdStorage,
     EmotionAnalyzer,
+    FileTools,
     ShellCommandGuard,
     SlidingWindow,
     TextSparsifier,
@@ -61,14 +61,14 @@ def get_llm_model():
 def get_static_instruction(context) -> str:
     """Статичная инструкция для кэширования."""
     return (
-        "You are an AI assistant running in a token-expensive environment. "
+        "You are an autonomous AI coding assistant running in a token-expensive environment. "
         "You have access to specialized skills (tools) and a shell command executor. "
-        "If the user asks to check the environment, install packages, or run scripts, "
-        "USE your skills to get the job done. You can read skill instructions, "
-        "read skill resources, and execute scripts using the `run_shell_command` tool. "
-        "CRITICAL: NEVER use 'find /' or search the whole filesystem. Only run commands inside the current project directory. "
-        "If a file is not found, ask the user for the correct path instead of searching the whole system. "
-        "Otherwise, answer the user's questions directly. "
+        "You can read files using `read_file`, write code to files using `write_file`, "
+        "and execute them using `run_shell_command` (e.g., `python script.py`). "
+        "When given a task, write the code, run it to test it, and if there are errors, "
+        "read the file, fix the errors, and try again. "
+        "CRITICAL: NEVER write to system files, hidden config files, or outside the current project directory. "
+        "CRITICAL: NEVER use 'find /' or search the whole filesystem. "
         "Keep your thoughts short. Minimize the number of tokens in your responses."
     )
 
@@ -77,33 +77,6 @@ def get_static_instruction(context) -> str:
 # СБОРКА АГЕНТА ИЗ КОМПОНЕНТОВ
 # ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# === ИНСТРУМЕНТ ДЛЯ ВЫПОЛНЕНИЯ КОМАНД ===
-def run_shell_command(command: str) -> str:
-    """Выполняет shell-команду.
-    
-    Args:
-        command: Команда для выполнения (например, 'ls -la' или 'bash script.sh').
-    """
-    try:
-        # Выполняем команду с таймаутом и рабочей директорией BASE_DIR
-        result = subprocess.run(
-            command, 
-            check=False, shell=True, 
-            capture_output=True, 
-            text=True, 
-            timeout=15,
-            cwd=BASE_DIR
-        )
-        output = result.stdout.strip()
-        if result.stderr:
-            output += f"\n[STDERR]: {result.stderr.strip()}"
-        return output or "Команда выполнена успешно (нет вывода)."
-    except subprocess.TimeoutExpired:
-        return "❌ Ошибка: Команда превысила лимит времени (15 секунд)."
-    except Exception as e:  # noqa: BLE001
-        return f"❌ Ошибка выполнения: {e!s}"
-
 
 # 1. Инициализируем модули
 analyzer = EmotionAnalyzer()
@@ -115,13 +88,12 @@ window = SlidingWindow(
     max_message_tokens=1_500,
 )
 shell_guard = ShellCommandGuard()
+file_tools = FileTools(BASE_DIR)  # <--- Наш новый модуль
 
 # 2. Инициализируем SecretEditor с умным вычислением пути
 allowlist_path = os.getenv("SECRET_ALLOWLIST_PATH")
 if allowlist_path and not os.path.isabs(allowlist_path):
-    # Если путь относительный, склеиваем его с папкой, где лежит agent.py
     allowlist_path = os.path.join(BASE_DIR, allowlist_path)
-
 secret_editor = SecretEditor(allowlist_path=allowlist_path)
 
 # 3. Собираем адаптер для ADK
@@ -135,9 +107,13 @@ callbacks = ADKAgentCallbacks(
     secret_editor=secret_editor,
 )
 
-# 4. Загружаем Skills (Навыки)
+# 4. Загружаем Skills (Навыки) и собираем инструменты
 skills_dir = pathlib.Path(BASE_DIR) / "skills"
-tools_list = [run_shell_command]
+tools_list = [
+    file_tools.run_shell_command,
+    file_tools.write_file,
+    file_tools.read_file,
+]
 
 if skills_dir.exists():
     print(f"📦 Загрузка навыков из {skills_dir}...")
@@ -152,7 +128,7 @@ if skills_dir.exists():
 root_agent = Agent(
     model=get_llm_model(),
     name="harness_test_agent",
-    description="Echo agent with universal harness and skills.",
+    description="Autonomous AI coding agent with universal harness and skills.",
     instruction=get_static_instruction,
     tools=tools_list,
     before_model_callback=callbacks.before_model,

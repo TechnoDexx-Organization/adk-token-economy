@@ -1,5 +1,6 @@
 import logging
 import math
+import pathlib
 import re
 from collections import Counter
 
@@ -12,7 +13,7 @@ class SecretEditor:
     из текста перед отправкой в LLM.
     """
 
-    def __init__(self):
+    def __init__(self, allowlist_path: str | None = None):
         # Уровень 1: Регулярки (явные секреты)
         self.secret_patterns = [
             re.compile(r"sk-[a-zA-Z0-9\-_]{20,}"),  # OpenAI
@@ -23,11 +24,42 @@ class SecretEditor:
         ]
         # Уровень 1.5: Белый список (что нельзя скрывать)
         self.allow_patterns = [
-            # Классический UUID
             re.compile(
                 r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
             ),
         ]
+        # Механизм для динамического наполнения
+        self.allowed_tokens: set[str] = set()
+        
+        # Если передан путь — загружаем из файла
+        if allowlist_path:
+            self.load_allowlist_from_file(allowlist_path)
+
+    def add_allowed_token(self, token: str) -> None:
+        """Добавляет конкретный токен в белый список."""
+        if token:
+            # Добавляем и оригинал, и очищенный вариант (без знаков препинания)
+            clean = re.sub(r"[^\w\-]", "", token)
+            self.allowed_tokens.add(token.strip())
+            self.allowed_tokens.add(clean)
+            logger.info(f"🔓 SecretEditor: добавлен в белый список токен (длина {len(token)})")
+
+    def load_allowlist_from_file(self, path: str) -> None:
+        """Читает файл со списком разрешенных токенов."""
+        p = pathlib.Path(path)
+        if not p.exists():
+            logger.warning(f"⚠️ SecretEditor: файл allowlist не найден: {path}")
+            return
+            
+        # Используем utf-8-sig, чтобы убрать невидимый BOM в начале файла
+        with p.open("r", encoding="utf-8-sig") as f:
+            for line in f:
+                token = line.strip()
+                # Игнорируем пустые строки и комментарии
+                if token and not token.startswith("#"):
+                    self.add_allowed_token(token)
+        
+        logger.info(f"📖 SecretEditor: загружено {len(self.allowed_tokens)} уникальных токенов из {path}")
 
     def _calculate_entropy(self, s: str) -> float:
         if not s:
@@ -39,47 +71,43 @@ class SecretEditor:
         )
 
     def _is_secret_word(self, word: str) -> bool:
-        # 1. Проверка по регуляркам (высокий приоритет)
+        # Очищаем слово от знаков препинания (точки, запятые, кавычки)
+        clean_word = re.sub(r"[^\w\-]", "", word)
+
+        # 0. Проверка белого списка (сравниваем и оригинал, и очищенный вариант)
+        if word in self.allowed_tokens or clean_word in self.allowed_tokens:
+            return False
+
+        # 1. Проверка по регуляркам
         for pattern in self.secret_patterns:
             if pattern.search(word):
                 return True
 
         # 2. Проверка белого списка (UUID)
         for pattern in self.allow_patterns:
-            if pattern.match(word):
+            if pattern.match(clean_word):
                 return False
 
-        # Очищаем слово от знаков препинания для анализа
-        clean_word = re.sub(r"[^\w\-]", "", word)
-
-        # 3. Фильтр по длине (короткие слова не могут быть ключами)
+        # 3. Фильтр по длине
         if len(clean_word) < 20:
             return False
 
         # 4. Анализ алфавита и энтропии
         if re.match(r"^[0-9a-fA-F]+$", clean_word):
-            # Это Hex (хэш SHA, MD5). Максимальная энтропия тут 4.0
             return self._calculate_entropy(clean_word) > 3.7
         elif re.match(r"^[a-zA-Z0-9\-_]+$", clean_word):
-            # Это Base64 или похожий ключ
             return self._calculate_entropy(clean_word) > 4.2
 
-        # Если там кириллица, спецсимволы или пробелы — это текст
         return False
 
     def redact(self, text: str) -> str:
-        """
-        Проходит по тексту, находит секреты и заменяет их на [REDACTED].
-        """
         if not text:
             return text
 
-        # Разбиваем текст по пробелам и переносам строк, сохраняя их (в скобках)
         words = re.split(r"(\s+)", text)
         safe_words = []
 
         for word in words:
-            # Если это просто пробел или перенос строки — оставляем как есть
             if word.isspace():
                 safe_words.append(word)
                 continue
@@ -92,5 +120,4 @@ class SecretEditor:
             else:
                 safe_words.append(word)
 
-        # Склеиваем обратно без добавления лишних пробелов
         return "".join(safe_words)

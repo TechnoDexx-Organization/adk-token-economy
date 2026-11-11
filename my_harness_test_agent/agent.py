@@ -15,6 +15,7 @@ from harness import (
     TextSparsifier,
 )
 from harness.adapters.adk import ADKAgentCallbacks
+from harness.modules.secret_editor import SecretEditor
 from harness.modules.skills import build_safe_skill_toolset
 
 load_dotenv()
@@ -65,10 +66,12 @@ def get_static_instruction(context) -> str:
         "If the user asks to check the environment, install packages, or run scripts, "
         "USE your skills to get the job done. You can read skill instructions, "
         "read skill resources, and execute scripts using the `run_shell_command` tool. "
-        "NEVER use 'find /' or search the whole filesystem. Only run commands inside the current project. "
+        "CRITICAL: NEVER use 'find /' or search the whole filesystem. Only run commands inside the current project directory. "
+        "If a file is not found, ask the user for the correct path instead of searching the whole system. "
         "Otherwise, answer the user's questions directly. "
         "Keep your thoughts short. Minimize the number of tokens in your responses."
     )
+
 
 # ==========================================
 # СБОРКА АГЕНТА ИЗ КОМПОНЕНТОВ
@@ -90,7 +93,7 @@ def run_shell_command(command: str) -> str:
             capture_output=True, 
             text=True, 
             timeout=15,
-            cwd=BASE_DIR  # <--- ВАЖНОЕ ИСПРАВЛЕНИЕ!
+            cwd=BASE_DIR
         )
         output = result.stdout.strip()
         if result.stderr:
@@ -113,7 +116,15 @@ window = SlidingWindow(
 )
 shell_guard = ShellCommandGuard()
 
-# 2. Собираем адаптер для ADK
+# 2. Инициализируем SecretEditor с умным вычислением пути
+allowlist_path = os.getenv("SECRET_ALLOWLIST_PATH")
+if allowlist_path and not os.path.isabs(allowlist_path):
+    # Если путь относительный, склеиваем его с папкой, где лежит agent.py
+    allowlist_path = os.path.join(BASE_DIR, allowlist_path)
+
+secret_editor = SecretEditor(allowlist_path=allowlist_path)
+
+# 3. Собираем адаптер для ADK
 callbacks = ADKAgentCallbacks(
     analyzer=analyzer,
     sparsifier=sparsifier,
@@ -121,9 +132,10 @@ callbacks = ADKAgentCallbacks(
     window=window,
     tone_hints=TONE_HINTS,
     guards=[shell_guard],
+    secret_editor=secret_editor,
 )
 
-# 3. Загружаем Skills (Навыки)
+# 4. Загружаем Skills (Навыки)
 skills_dir = pathlib.Path(BASE_DIR) / "skills"
 tools_list = [run_shell_command]
 
@@ -136,11 +148,11 @@ if skills_dir.exists():
     except Exception as e:  # noqa: BLE001
         print(f"❌ Ошибка при загрузке навыков: {e}")
 
-# 4. Создаем агента
+# 5. Создаем агента
 root_agent = Agent(
     model=get_llm_model(),
     name="harness_test_agent",
-    description="Test agent with universal harness and skills.",
+    description="Echo agent with universal harness and skills.",
     instruction=get_static_instruction,
     tools=tools_list,
     before_model_callback=callbacks.before_model,

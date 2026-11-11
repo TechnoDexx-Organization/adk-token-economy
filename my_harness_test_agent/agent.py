@@ -139,7 +139,7 @@ if skills_dir.exists():
 # 4. Создаем агента
 root_agent = Agent(
     model=get_llm_model(),
-    name="harness-test-agent",
+    name="harness_test_agent",
     description="Test agent with universal harness and skills.",
     instruction=get_static_instruction,
     tools=tools_list,

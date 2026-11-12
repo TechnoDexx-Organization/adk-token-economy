@@ -39,3 +39,7 @@ test_window.zip
 screenshot_report.py
 screenshot.png
 *.json*
+my_harness_test_agent/cache_probe.py
+my_harness_test_agent/error_test.py
+Краткое резюме архитектуры (ГигаЧат).md
+my_harness_test_agent/test_error_test.py

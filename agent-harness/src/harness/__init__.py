@@ -3,6 +3,8 @@
 from .modules.analyzer import EmotionAnalyzer
 from .modules.file_tools import FileTools
 from .modules.guard import SafeToolGuard, ShellCommandGuard
+from .modules.memory import FileMemoryProvider, HttpMemoryProvider, MemoryProvider
+from .modules.retry import build_retry_config, log_retry_attempt
 from .modules.secret_editor import SecretEditor
 from .modules.skills import build_safe_skill_toolset
 from .modules.sparsifier import TextSparsifier
@@ -15,6 +17,11 @@ __all__ = [
     "FileTools",
     "SafeToolGuard",
     "ShellCommandGuard",
+    "MemoryProvider",
+    "FileMemoryProvider",
+    "HttpMemoryProvider",
+    "build_retry_config",
+    "log_retry_attempt",
     "SecretEditor",
     "build_safe_skill_toolset",
     "TextSparsifier",

@@ -8,6 +8,7 @@ from google.genai.types import Content, Part
 
 # Импортируем модули из нашей же библиотеки
 from ..modules.analyzer import EmotionAnalyzer
+from ..modules.memory import MemoryProvider
 from ..modules.secret_editor import SecretEditor
 from ..modules.sparsifier import TextSparsifier
 from ..modules.storage import ColdStorage
@@ -29,6 +30,7 @@ class ADKAgentCallbacks:
         guards: list | None = None,
         secret_editor: SecretEditor | None = None,
         enable_hitl: bool = True,
+        memory_provider: MemoryProvider | None = None,
     ):
         self.analyzer = analyzer
         self.sparsifier = sparsifier
@@ -38,18 +40,16 @@ class ADKAgentCallbacks:
         self.guards = guards or []
         self.secret_editor = secret_editor or SecretEditor()
         self.enable_hitl = enable_hitl
+        self.memory_provider = memory_provider
         self.flag_key = "_processed"
         self.ledger_key = "_ledger_upto"
 
-        # Список инструментов, которые требуют подтверждения (Human-in-the-Loop)
+        # Настройки HITL и лимитов
         self.hitl_tools = {"run_shell_command", "write_file"}
-
-        # Лимиты для ответов инструментов (чтобы не сломать контекст огромным логом)
         self.tool_response_max_chars = 10_000
-        # Храним ID уже обработанных ответов инструментов (защита от повторной обработки)
         self._processed_tool_ids: set[str] = set()
 
-        # Кэши "посчитано один раз на событие"
+        # Кэши
         self._sparse_cache: dict[str, str] = {}
         self._emotion_cache: dict[str, str] = {}
         self._final_cache: dict[str, str] = {}
@@ -128,7 +128,7 @@ class ADKAgentCallbacks:
 
         callback_context.state[self.ledger_key] = len(events)
 
-    # ──────────── шаг 2: анализ и сушка последнего сообщения ────────────
+    # ──────────── шаг 2: анализ и сушка ────────────
 
     def _process_last_user_message(self, session, callback_context: CallbackContext) -> str | None:
         last_user_event = next(
@@ -259,9 +259,12 @@ class ADKAgentCallbacks:
         if tone_hint and new_contents and new_contents[-1].role == "user" and new_contents[-1].parts:
             part = new_contents[-1].parts[0]
             prefix = f"{part.text}\n\n" if part.text else ""
-            part.text = f"{prefix}[Tone hint: {tone_hint}]"
+            # Создаем новый Part, так как оригинальный может быть иммутабельным
+            new_part = Part(text=f"{prefix}[Tone hint: {tone_hint}]")
+            new_parts = [new_part] + new_contents[-1].parts[1:]
+            new_contents[-1] = Content(role="user", parts=new_parts)
 
-    # ──────────── НОВОЕ: обработка ответов инструментов ────────────
+    # ──────────── шаг 5: обработка ответов инструментов ────────────
 
     def _process_tool_responses(self, llm_request: LlmRequest) -> None:
         """Обрабатывает function_response в llm_request.contents (только новые, по ID)."""
@@ -272,29 +275,52 @@ class ADKAgentCallbacks:
             if not content.parts:
                 continue
             for part in content.parts:
-                if getattr(part, "function_response", None):
-                    resp = part.function_response
-                    # Уникальный ID ответа (если нет — генерируем хэш)
-                    resp_id = getattr(resp, "id", None)
-                    if not resp_id:
+                # Явное присвоение для ty
+                resp = getattr(part, "function_response", None)
+                if resp is not None:
+                    # Используем walrus operator для Sourcery
+                    if not (resp_id := getattr(resp, "id", None)):
                         raw = f"{resp.name}|{json.dumps(resp.response, sort_keys=True, ensure_ascii=False, default=str)}"
                         resp_id = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
-                    
+
                     if resp_id in self._processed_tool_ids:
                         continue
-                    
+
                     self._processed_tool_ids.add(resp_id)
-                    
+
                     response = resp.response
                     if isinstance(response, dict):
                         for key, value in response.items():
                             if isinstance(value, str):
-                                # 1. DLP (защита от утечек)
                                 safe = self.secret_editor.redact(value)
-                                # 2. Жесткий лимит на размер
                                 if len(safe) > self.tool_response_max_chars:
-                                    safe = safe[:self.tool_response_max_chars] + f"\n...[TRUNCATED: {len(value)} -> {self.tool_response_max_chars}]"
+                                    safe = f"{safe[:self.tool_response_max_chars]}\n...[TRUNCATED: {len(value)} -> {self.tool_response_max_chars}]"
                                 response[key] = safe
+
+    # ──────────── шаг 6: RAG (поиск в памяти) ────────────
+
+    def _apply_memory_search(self, new_contents: list) -> None:
+        """Ищет контекст в RAG по последнему сообщению пользователя."""
+        if not self.memory_provider or not new_contents:
+            return
+
+        if new_contents[-1].role == "user" and new_contents[-1].parts:
+            part = new_contents[-1].parts[0]
+            # Используем walrus operator для Sourcery
+            if query := (getattr(part, "text", "") or ""):
+                if memories := self.memory_provider.search(query, limit=3):
+                    self._inject_memories_into_context(memories, query, new_contents)
+
+    def _inject_memories_into_context(self, memories: list, query: str, new_contents: list) -> None:
+        """Вспомогательный метод для вставки найденного контекста в сообщение."""
+        # Используем f-string для Sourcery
+        joined_memories = "\n".join(f"- {m}" for m in memories)
+        mem_text = f"\n\n[Relevant context from past conversations]:\n{joined_memories}"
+
+        new_part = Part(text=query + mem_text)
+        new_parts = [new_part] + new_contents[-1].parts[1:]
+        new_contents[-1] = Content(role="user", parts=new_parts)
+        print(f"🧠 Найдено {len(memories)} фрагментов в памяти.")
 
     # ─────────────────────── сборка ───────────────────────
 
@@ -305,7 +331,6 @@ class ADKAgentCallbacks:
 
         self._ledger_new_events(session, callback_context)
 
-        # Если это повторный вызов после инструмента — обрабатываем только новые tool responses
         if callback_context.state.get(self.flag_key):
             self._process_tool_responses(llm_request)
             return
@@ -317,6 +342,7 @@ class ADKAgentCallbacks:
         selected = self._select_events(session)
         new_contents = self._build_contents(selected)
 
+        self._apply_memory_search(new_contents)
         self._apply_tone_hint(new_contents, callback_context)
 
         window = self.window
@@ -332,7 +358,6 @@ class ADKAgentCallbacks:
         callback_context.state[self.flag_key] = True
 
     def before_tool(self, tool, args, tool_context):
-        """Вызывается ДО выполнения инструмента. Проверяет guards и HITL."""
         for guard in self.guards:
             if not guard.check(tool.name, args, {}):
                 return {"error": f"Tool '{tool.name}' blocked by security guard."}

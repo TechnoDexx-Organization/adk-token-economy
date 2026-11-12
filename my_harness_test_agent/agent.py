@@ -10,7 +10,9 @@ from google.adk.tools import ToolContext
 from harness import (
     ColdStorage,
     EmotionAnalyzer,
+    FileMemoryProvider,
     FileTools,
+    HttpMemoryProvider,
     ShellCommandGuard,
     SlidingWindow,
     TextSparsifier,
@@ -80,6 +82,23 @@ def get_llm_model():
     raise ValueError(f"❌ Неизвестный AI_PROVIDER: {provider}")
 
 
+def get_memory_provider():
+    """Инициализирует RAG-провайдер в зависимости от настроек в .env."""
+    if not get_bool_env("ENABLE_MEMORY", True):
+        print("🚫 Память (RAG) отключена.")
+        return None
+
+    provider_type = os.getenv("MEMORY_PROVIDER_TYPE", "file").lower()
+
+    if provider_type == "http" and (url := os.getenv("MEMORY_HTTP_URL")):
+        print(f"🧠 Используем внешний RAG: {url}")
+        return HttpMemoryProvider(url, api_key=os.getenv("MEMORY_HTTP_API_KEY", ""))
+
+    # По умолчанию используем файловую заглушку
+    print("🧠 Используем локальный файловый поиск (cold_storage.jsonl)")
+    return FileMemoryProvider(os.path.join(BASE_DIR, "cold_storage.jsonl"))
+
+
 def get_static_instruction(context) -> str:
     """Статичная инструкция. Читается из файла, если включен Prompt Management."""
     
@@ -90,7 +109,7 @@ def get_static_instruction(context) -> str:
             try:
                 print(f"📄 Загружена инструкция из файла: {prompt_path}")
                 return prompt_path.read_text(encoding="utf-8")
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 print(f"⚠️ Ошибка чтения файла промпта: {e}. Используем дефолтную инструкцию.")
         else:
             print(f"⚠️ Файл промпта не найден: {prompt_path}. Используем дефолтную инструкцию.")
@@ -141,6 +160,7 @@ shell_guard = ShellCommandGuard() if get_bool_env("ENABLE_GUARD", True) else Non
 guards_list = [shell_guard] if shell_guard else []
 
 file_tools = FileTools(BASE_DIR)
+memory_provider = get_memory_provider()
 
 # 2. Инициализируем SecretEditor
 if get_bool_env("ENABLE_SECRET_EDITOR", True):
@@ -161,6 +181,7 @@ callbacks = ADKAgentCallbacks(
     guards=guards_list,
     secret_editor=secret_editor,
     enable_hitl=get_bool_env("ENABLE_HITL", True),
+    memory_provider=memory_provider,  # <--- ПЕРЕДАЕМ RAG
 )
 
 
@@ -196,7 +217,7 @@ if skills_dir.exists():
 root_agent = Agent(
     model=get_llm_model(),
     name="harness_test_agent",
-    description="Autonomous AI coding agent with universal harness, skills, feature flags, and retry logic.",
+    description="Autonomous AI coding agent with universal harness, skills, feature flags, and RAG support.",
     instruction=get_static_instruction,
     tools=tools_list,
     before_model_callback=callbacks.before_model,

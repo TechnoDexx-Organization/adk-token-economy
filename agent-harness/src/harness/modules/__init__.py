@@ -3,6 +3,7 @@
 from .analyzer import EmotionAnalyzer
 from .file_tools import FileTools
 from .guard import SafeToolGuard, ShellCommandGuard
+from .memory import FileMemoryProvider, HttpMemoryProvider, MemoryProvider
 from .retry import build_retry_config, log_retry_attempt
 from .secret_editor import SecretEditor
 from .skills import build_safe_skill_toolset
@@ -23,5 +24,8 @@ __all__ = [
     "TokenCounter",
     "SlidingWindow",
     "build_retry_config",
-    "log_retry_attempt"
+    "log_retry_attempt",
+    "MemoryProvider",
+    "FileMemoryProvider",
+    "HttpMemoryProvider",
 ]

@@ -51,3 +51,4 @@ session.db
 # Убери решётку, если решишь, что они не нужны
 entropy_experiment.py
 save_summary.py
+Планы на завтра *.md

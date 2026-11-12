@@ -15,45 +15,55 @@ dist/
 venv/
 env/
 
-# Настройки IDE
+# Настройки IDE и кэши инструментов
 .vscode/
 .idea/
+.ruff_cache/
+.pytest_cache/
 
-# Секреты (никогда не коммитим)
+# Секреты и локальные настройки (никогда не коммитим)
 .env
 .env.*
 !.env.example
 
-# Логи и данные сессий
+# Данные сессий, логи и базы данных
 *.log
 logs/
+.adk/
+*.db
 cold_storage.jsonl
-*.jsonl.tmp
+*.jsonl
 
 # Временные архивы
 *.zip
 *.tar.gz
 *.tmp
 
-# OS-мусор
+# Мусор ОС
 .DS_Store
 Thumbs.db
 
-# Локальные БД и кэши
-.adk/
-.ruff_cache/
-.pytest_cache/
-*.db
-session.db
-*.json
-*.zip
-report.html
-save_summary.py
+# Личные эксперименты в корне (если они не нужны в репо)
+test_window.py
+test_window.zip
 screenshot_report.py
 screenshot.png
+<<<<<<< HEAD
 test_window.py
 
 # Личные эксперименты (если не хочешь их в репо)
 # Убери решётку, если решишь, что они не нужны
  entropy_experiment.py
  save_summary.py
+=======
+report.html
+save_summary.py
+entropy_experiment.py
+create-lib-script.sh
+Hello*.json
+hello.py
+hitl_test.py
+error_test.py
+Final log *.json
+Привет*.json
+>>>>>>> 4703ade (feat: add skills, prompts and fix gitignore)

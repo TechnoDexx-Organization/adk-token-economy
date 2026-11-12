@@ -3,6 +3,7 @@
 from .analyzer import EmotionAnalyzer
 from .file_tools import FileTools
 from .guard import SafeToolGuard, ShellCommandGuard
+from .retry import build_retry_config, log_retry_attempt
 from .secret_editor import SecretEditor
 from .skills import build_safe_skill_toolset
 from .sparsifier import TextSparsifier
@@ -21,4 +22,6 @@ __all__ = [
     "ColdStorage",
     "TokenCounter",
     "SlidingWindow",
+    "build_retry_config",
+    "log_retry_attempt"
 ]

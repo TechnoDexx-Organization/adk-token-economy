@@ -16,15 +16,18 @@ from harness import (
     TextSparsifier,
 )
 from harness.adapters.adk import ADKAgentCallbacks
+from harness.modules.retry import build_retry_config
 from harness.modules.secret_editor import SecretEditor
 from harness.modules.skills import build_safe_skill_toolset
 
 load_dotenv()
 
+
 # === ХЕЛПЕР ДЛЯ ЧТЕНИЯ ФЛАГОВ ===
 def get_bool_env(key: str, default: bool = True) -> bool:
     val = os.getenv(key, str(default)).lower()
     return val in ("true", "1", "yes", "on")
+
 
 # === НАСТРОЙКА ТОНА ===
 TONE_HINTS = {
@@ -41,6 +44,18 @@ def get_llm_model():
     """Возвращает настроенный LiteLlm в зависимости от AI_PROVIDER."""
     provider = os.getenv("AI_PROVIDER", "yandex").lower()
 
+    # Подготавливаем конфигурацию retry (если включена)
+    retry_kwargs = {}
+    if get_bool_env("ENABLE_RETRY", True):
+        retry_kwargs = build_retry_config(
+            max_retries=int(os.getenv("RETRY_MAX_ATTEMPTS", "3")),
+            timeout_seconds=int(os.getenv("RETRY_TIMEOUT_SECONDS", "60")),
+            backoff_factor=float(os.getenv("RETRY_BACKOFF_FACTOR", "2.0")),
+        )
+        print(f"🔁 Retry Logic включен: max_retries={retry_kwargs.get('max_retries')}, timeout={retry_kwargs.get('timeout')}s")
+    else:
+        print("🚫 Retry Logic отключен (ENABLE_RETRY=false)")
+
     if provider == "selectel":
         print("🔌 Используем Selectel AI Gateway")
         return LiteLlm(
@@ -48,8 +63,9 @@ def get_llm_model():
             api_base="https://api.selectel.ru/aig/v1",
             api_key=os.getenv("SELECTEL_API_KEY"),
             reasoning_effort="off",
+            **retry_kwargs,
         )
-    
+
     if provider == "yandex":
         print("🔌 Используем Yandex AI Studio")
         folder_id = os.getenv("YANDEX_FOLDER_ID")
@@ -59,14 +75,14 @@ def get_llm_model():
             api_key=os.getenv("YANDEX_API_KEY"),
             extra_headers={"OpenAI-Project": folder_id},
             reasoning_effort="none",
+            **retry_kwargs,
         )
-        
+
     raise ValueError(f"❌ Неизвестный AI_PROVIDER: {provider}")
 
 
 def get_static_instruction(context) -> str:
     """Статичная инструкция для кэширования."""
-    # Если HITL включен, добавляем инструкцию про него
     hitl_instruction = ""
     if get_bool_env("ENABLE_HITL", True):
         hitl_instruction = (
@@ -82,7 +98,7 @@ def get_static_instruction(context) -> str:
         "You can read files using `read_file`, write code to files using `write_file`, "
         "and execute them using `run_shell_command` (e.g., `python script.py`). "
         f"{hitl_instruction}"
-        "When given a task, write the code, run it to test it, and if there are errors, read the file, fix them, and try again. "
+        "When given a task, write the code, run it to test it, and if there are errors, read the file, fix the errors, and try again. "
         "CRITICAL: NEVER write to system files, hidden config files, or outside the current project directory. "
         "CRITICAL: NEVER use 'find /' or search the whole filesystem. "
         "Keep your thoughts short. Minimize the number of tokens in your responses."
@@ -131,8 +147,9 @@ callbacks = ADKAgentCallbacks(
     tone_hints=TONE_HINTS,
     guards=guards_list,
     secret_editor=secret_editor,
-    enable_hitl=get_bool_env("ENABLE_HITL", True), # Передаем флаг HITL
+    enable_hitl=get_bool_env("ENABLE_HITL", True),
 )
+
 
 # 4. Инструмент для подтверждения действий (HITL)
 def approve_action(tool_name: str, args_hash: str, tool_context: ToolContext) -> str:
@@ -140,6 +157,7 @@ def approve_action(tool_name: str, args_hash: str, tool_context: ToolContext) ->
     state_key = f"hitl_approved_{tool_name}_{args_hash}"
     tool_context.state[state_key] = True
     return f"✅ Действие '{tool_name}' с хэшем {args_hash} одобрено пользователем. Вы можете снова вызвать этот инструмент."
+
 
 # 5. Загружаем Skills (Навыки) и собираем инструменты
 skills_dir = pathlib.Path(BASE_DIR) / "skills"
@@ -149,7 +167,6 @@ tools_list = [
     file_tools.read_file,
 ]
 
-# Добавляем approve_action только если HITL включен
 if get_bool_env("ENABLE_HITL", True):
     tools_list.append(approve_action)
 
@@ -166,7 +183,7 @@ if skills_dir.exists():
 root_agent = Agent(
     model=get_llm_model(),
     name="harness_test_agent",
-    description="Autonomous AI coding agent with universal harness, skills, and feature flags.",
+    description="Autonomous AI coding agent with universal harness, skills, feature flags, and retry logic.",
     instruction=get_static_instruction,
     tools=tools_list,
     before_model_callback=callbacks.before_model,

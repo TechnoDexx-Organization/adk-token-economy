@@ -6,6 +6,7 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import LlmRequest, LlmResponse
 from google.genai.types import Content, Part
 
+# Импортируем модули из нашей же библиотеки
 from ..modules.analyzer import EmotionAnalyzer
 from ..modules.secret_editor import SecretEditor
 from ..modules.sparsifier import TextSparsifier
@@ -42,6 +43,11 @@ class ADKAgentCallbacks:
 
         # Список инструментов, которые требуют подтверждения (Human-in-the-Loop)
         self.hitl_tools = {"run_shell_command", "write_file"}
+
+        # Лимиты для ответов инструментов (чтобы не сломать контекст огромным логом)
+        self.tool_response_max_chars = 10_000
+        # Храним ID уже обработанных ответов инструментов (защита от повторной обработки)
+        self._processed_tool_ids: set[str] = set()
 
         # Кэши "посчитано один раз на событие"
         self._sparse_cache: dict[str, str] = {}
@@ -255,6 +261,41 @@ class ADKAgentCallbacks:
             prefix = f"{part.text}\n\n" if part.text else ""
             part.text = f"{prefix}[Tone hint: {tone_hint}]"
 
+    # ──────────── НОВОЕ: обработка ответов инструментов ────────────
+
+    def _process_tool_responses(self, llm_request: LlmRequest) -> None:
+        """Обрабатывает function_response в llm_request.contents (только новые, по ID)."""
+        if not self.secret_editor:
+            return
+
+        for content in llm_request.contents:
+            if not content.parts:
+                continue
+            for part in content.parts:
+                if getattr(part, "function_response", None):
+                    resp = part.function_response
+                    # Уникальный ID ответа (если нет — генерируем хэш)
+                    resp_id = getattr(resp, "id", None)
+                    if not resp_id:
+                        raw = f"{resp.name}|{json.dumps(resp.response, sort_keys=True, ensure_ascii=False, default=str)}"
+                        resp_id = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+                    
+                    if resp_id in self._processed_tool_ids:
+                        continue
+                    
+                    self._processed_tool_ids.add(resp_id)
+                    
+                    response = resp.response
+                    if isinstance(response, dict):
+                        for key, value in response.items():
+                            if isinstance(value, str):
+                                # 1. DLP (защита от утечек)
+                                safe = self.secret_editor.redact(value)
+                                # 2. Жесткий лимит на размер
+                                if len(safe) > self.tool_response_max_chars:
+                                    safe = safe[:self.tool_response_max_chars] + f"\n...[TRUNCATED: {len(value)} -> {self.tool_response_max_chars}]"
+                                response[key] = safe
+
     # ─────────────────────── сборка ───────────────────────
 
     def before_model(self, callback_context: CallbackContext, llm_request: LlmRequest):
@@ -264,7 +305,9 @@ class ADKAgentCallbacks:
 
         self._ledger_new_events(session, callback_context)
 
+        # Если это повторный вызов после инструмента — обрабатываем только новые tool responses
         if callback_context.state.get(self.flag_key):
+            self._process_tool_responses(llm_request)
             return
 
         self._session_id = session.id
@@ -290,12 +333,10 @@ class ADKAgentCallbacks:
 
     def before_tool(self, tool, args, tool_context):
         """Вызывается ДО выполнения инструмента. Проверяет guards и HITL."""
-        # 1. Проверка Guards (безопасность)
         for guard in self.guards:
             if not guard.check(tool.name, args, {}):
                 return {"error": f"Tool '{tool.name}' blocked by security guard."}
 
-        # 2. Проверка HITL (Human-in-the-Loop)
         if self.enable_hitl and tool.name in self.hitl_tools:
             args_str = json.dumps(args, sort_keys=True, ensure_ascii=False)
             args_hash = hashlib.md5(args_str.encode("utf-8")).hexdigest()[:8]

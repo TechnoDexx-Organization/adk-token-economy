@@ -15,6 +15,7 @@ def _run_script() -> subprocess.CompletedProcess:
         text=True,
         encoding="utf-8",
         timeout=30,
+        check=False,
     )
 
 

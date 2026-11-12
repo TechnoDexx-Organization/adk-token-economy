@@ -44,7 +44,6 @@ def get_llm_model():
     """Возвращает настроенный LiteLlm в зависимости от AI_PROVIDER."""
     provider = os.getenv("AI_PROVIDER", "yandex").lower()
 
-    # Подготавливаем конфигурацию retry (если включена)
     retry_kwargs = {}
     if get_bool_env("ENABLE_RETRY", True):
         retry_kwargs = build_retry_config(
@@ -82,7 +81,21 @@ def get_llm_model():
 
 
 def get_static_instruction(context) -> str:
-    """Статичная инструкция для кэширования."""
+    """Статичная инструкция. Читается из файла, если включен Prompt Management."""
+    
+    # 1. Пытаемся прочитать из файла (если включен флаг)
+    if get_bool_env("ENABLE_PROMPT_FILE", True):
+        prompt_path = pathlib.Path(BASE_DIR) / "prompts" / "agent_instruction.md"
+        if prompt_path.exists():
+            try:
+                print(f"📄 Загружена инструкция из файла: {prompt_path}")
+                return prompt_path.read_text(encoding="utf-8")
+            except Exception as e:
+                print(f"⚠️ Ошибка чтения файла промпта: {e}. Используем дефолтную инструкцию.")
+        else:
+            print(f"⚠️ Файл промпта не найден: {prompt_path}. Используем дефолтную инструкцию.")
+
+    # 2. Фолбэк на дефолтную инструкцию (если файла нет или флаг выключен)
     hitl_instruction = ""
     if get_bool_env("ENABLE_HITL", True):
         hitl_instruction = (

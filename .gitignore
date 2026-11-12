@@ -10,7 +10,7 @@ dist/
 *.egg
 .eggs/
 
-# Окружения
+# Виртуальные окружения
 .venv/
 venv/
 env/
@@ -19,27 +19,41 @@ env/
 .vscode/
 .idea/
 
-# Секреты (на всякий случай)
+# Секреты (никогда не коммитим)
 .env
+.env.*
+!.env.example
 
-# Файлы логов
+# Логи и данные сессий
+*.log
 logs/
+cold_storage.jsonl
+*.jsonl.tmp
 
-# Прочие файлы
+# Временные архивы
 *.zip
 *.tar.gz
-*.jsonl
-*.sh
-my_test_agent/.env_bak
-*.sh*
-history_*.json*
+*.tmp
+
+# OS-мусор
+.DS_Store
+Thumbs.db
+
+# Локальные БД и кэши
+.adk/
+.ruff_cache/
+.pytest_cache/
+*.db
+session.db
+*.json
+*.zip
 report.html
-test_window.py
-test_window.zip
+save_summary.py
 screenshot_report.py
 screenshot.png
-*.json*
-my_harness_test_agent/cache_probe.py
-my_harness_test_agent/error_test.py
-Краткое резюме архитектуры (ГигаЧат).md
-my_harness_test_agent/test_error_test.py
+test_window.py
+
+# Личные эксперименты (если не хочешь их в репо)
+# Убери решётку, если решишь, что они не нужны
+ entropy_experiment.py
+ save_summary.py

@@ -10,7 +10,7 @@ dist/
 *.egg
 .eggs/
 
-# Окружения
+# Виртуальные окружения
 .venv/
 venv/
 env/
@@ -18,14 +18,36 @@ env/
 # Настройки IDE
 .vscode/
 .idea/
-.adk/
-# Секреты (на всякий случай)
-.env*
 
-# Файлы логов
+# Секреты (никогда не коммитим)
+.env
+.env.*
+!.env.example
+
+# Логи и данные сессий
+*.log
 logs/
+cold_storage.jsonl
+*.jsonl.tmp
 
-# Прочие файлы
+# Временные архивы
 *.zip
 *.tar.gz
+*.tmp
+
+# OS-мусор
+.DS_Store
+Thumbs.db
+
+# Локальные БД и кэши
+.adk/
+.ruff_cache/
+.pytest_cache/
+*.db
+session.db
 *.jsonl
+
+# Личные эксперименты (если не хочешь их в репо)
+# Убери решётку, если решишь, что они не нужны
+entropy_experiment.py
+save_summary.py

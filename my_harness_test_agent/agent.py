@@ -3,7 +3,6 @@ import pathlib
 
 from dotenv import load_dotenv
 from google.adk.agents import Agent
-from google.adk.models.lite_llm import LiteLlm
 from google.adk.tools import ToolContext
 
 # Импортируем из нашей универсальной библиотеки agent-harness
@@ -17,9 +16,9 @@ from harness import (
     ShellCommandGuard,
     SlidingWindow,
     TextSparsifier,
+    build_llm_model,
 )
 from harness.adapters.adk import ADKAgentCallbacks
-from harness.modules.retry import build_retry_config
 from harness.modules.secret_editor import SecretEditor
 from harness.modules.skills import build_safe_skill_toolset
 
@@ -39,45 +38,6 @@ TONE_HINTS = {
     "happiness": "The user is in a good mood. Be slightly more upbeat, but remain efficient.",
     "enthusiasm": "The user is in a good mood. Be slightly more upbeat, but remain efficient.",
 }
-
-
-def get_llm_model():
-    provider = os.getenv("AI_PROVIDER", "yandex").lower()
-
-    retry_kwargs = {}
-    if get_bool_env("ENABLE_RETRY", True):
-        retry_kwargs = build_retry_config(
-            max_retries=int(os.getenv("RETRY_MAX_ATTEMPTS", "3")),
-            timeout_seconds=int(os.getenv("RETRY_TIMEOUT_SECONDS", "60")),
-            backoff_factor=float(os.getenv("RETRY_BACKOFF_FACTOR", "2.0")),
-        )
-        print(f"🔁 Retry Logic включен: max_retries={retry_kwargs.get('max_retries')}, timeout={retry_kwargs.get('timeout')}s")
-    else:
-        print("🚫 Retry Logic отключен (ENABLE_RETRY=false)")
-
-    if provider == "selectel":
-        print("🔌 Используем Selectel AI Gateway")
-        return LiteLlm(
-            model="openai/deepseek/deepseek-v4.1-flash",
-            api_base="https://api.selectel.ru/aig/v1",
-            api_key=os.getenv("SELECTEL_API_KEY"),
-            reasoning_effort="off",
-            **retry_kwargs,
-        )
-
-    if provider == "yandex":
-        print("🔌 Используем Yandex AI Studio")
-        folder_id = os.getenv("YANDEX_FOLDER_ID")
-        return LiteLlm(
-            model=f"openai/gpt://{folder_id}/deepseek-v4.1-flash/latest",
-            api_base=os.getenv("YANDEX_API_BASE"),
-            api_key=os.getenv("YANDEX_API_KEY"),
-            extra_headers={"OpenAI-Project": folder_id},
-            reasoning_effort="none",
-            **retry_kwargs,
-        )
-
-    raise ValueError(f"❌ Неизвестный AI_PROVIDER: {provider}")
 
 
 def get_memory_provider():
@@ -150,7 +110,6 @@ guards_list = [shell_guard] if shell_guard else []
 file_tools = FileTools(BASE_DIR)
 memory_provider = get_memory_provider()
 
-# Память фактов (всегда включена, если есть ENABLE_FACTS)
 if get_bool_env("ENABLE_FACTS", True):
     fact_memory = FactMemoryProvider(os.path.join(BASE_DIR, "facts.jsonl"))
     print("🧠 Память фактов (facts.jsonl) включена.")
@@ -175,7 +134,7 @@ callbacks = ADKAgentCallbacks(
     secret_editor=secret_editor,
     enable_hitl=get_bool_env("ENABLE_HITL", True),
     memory_provider=memory_provider,
-    fact_memory_provider=fact_memory,  # <--- НОВОЕ
+    fact_memory_provider=fact_memory,
 )
 
 
@@ -186,11 +145,6 @@ def approve_action(tool_name: str, args_hash: str, tool_context: ToolContext) ->
 
 
 def remember_fact(fact: str, tool_context: ToolContext) -> str:
-    """Запоминает важный факт о пользователе.
-    
-    Args:
-        fact: Факт, который нужно запомнить (например, "Игорь не любит звонки").
-    """
     if fact_memory is None:
         return "❌ Память фактов отключена."
     fact_memory.add_fact(fact, source="agent")
@@ -220,7 +174,7 @@ if skills_dir.exists():
         print(f"❌ Ошибка при загрузке навыков: {e}")
 
 root_agent = Agent(
-    model=get_llm_model(),
+    model=build_llm_model(),
     name="harness_test_agent",
     description="Autonomous AI coding agent with universal harness, skills, feature flags, RAG and facts memory.",
     instruction=get_static_instruction,

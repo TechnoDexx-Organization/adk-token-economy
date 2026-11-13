@@ -3,6 +3,7 @@
 from .analyzer import EmotionAnalyzer
 from .file_tools import FileTools
 from .guard import SafeToolGuard, ShellCommandGuard
+from .llm_factory import build_llm_model
 from .memory import FactMemoryProvider, FileMemoryProvider, HttpMemoryProvider, MemoryProvider
 from .retry import build_retry_config, log_retry_attempt
 from .secret_editor import SecretEditor
@@ -17,6 +18,7 @@ __all__ = [
     "FileTools",
     "SafeToolGuard",
     "ShellCommandGuard",
+    "build_llm_model",
     "MemoryProvider",
     "FileMemoryProvider",
     "HttpMemoryProvider",

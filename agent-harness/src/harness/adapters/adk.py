@@ -31,7 +31,7 @@ class ADKAgentCallbacks:
         secret_editor: SecretEditor | None = None,
         enable_hitl: bool = True,
         memory_provider: MemoryProvider | None = None,
-        fact_memory_provider: FactMemoryProvider | None = None,  # <--- НОВОЕ
+        fact_memory_provider: FactMemoryProvider | None = None,
     ):
         self.analyzer = analyzer
         self.sparsifier = sparsifier
@@ -42,7 +42,7 @@ class ADKAgentCallbacks:
         self.secret_editor = secret_editor or SecretEditor()
         self.enable_hitl = enable_hitl
         self.memory_provider = memory_provider
-        self.fact_memory_provider = fact_memory_provider  # <--- НОВОЕ
+        self.fact_memory_provider = fact_memory_provider
         self.flag_key = "_processed"
         self.ledger_key = "_ledger_upto"
 
@@ -323,7 +323,10 @@ class ADKAgentCallbacks:
                         print(f"🧠 Найдено {len(facts)} фактов о пользователе.")
 
                 if mem_text:
-                    new_part = Part(text=query + mem_text)
+                    # КРИТИЧНО: прогоняем найденное через SecretEditor,
+                    # чтобы память не могла протащить секреты в обход защиты.
+                    safe_mem_text = self.secret_editor.redact(mem_text) if self.secret_editor else mem_text
+                    new_part = Part(text=query + safe_mem_text)
                     new_parts = [new_part] + new_contents[-1].parts[1:]
                     new_contents[-1] = Content(role="user", parts=new_parts)
 

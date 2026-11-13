@@ -3,7 +3,7 @@
 from .modules.analyzer import EmotionAnalyzer
 from .modules.file_tools import FileTools
 from .modules.guard import SafeToolGuard, ShellCommandGuard
-from .modules.memory import FileMemoryProvider, HttpMemoryProvider, MemoryProvider
+from .modules.memory import FactMemoryProvider, FileMemoryProvider, HttpMemoryProvider, MemoryProvider
 from .modules.retry import build_retry_config, log_retry_attempt
 from .modules.secret_editor import SecretEditor
 from .modules.skills import build_safe_skill_toolset
@@ -20,6 +20,7 @@ __all__ = [
     "MemoryProvider",
     "FileMemoryProvider",
     "HttpMemoryProvider",
+    "FactMemoryProvider",
     "build_retry_config",
     "log_retry_attempt",
     "SecretEditor",

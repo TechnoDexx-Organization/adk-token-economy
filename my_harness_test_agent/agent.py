@@ -10,6 +10,7 @@ from google.adk.tools import ToolContext
 from harness import (
     ColdStorage,
     EmotionAnalyzer,
+    FactMemoryProvider,
     FileMemoryProvider,
     FileTools,
     HttpMemoryProvider,
@@ -25,13 +26,11 @@ from harness.modules.skills import build_safe_skill_toolset
 load_dotenv()
 
 
-# === ХЕЛПЕР ДЛЯ ЧТЕНИЯ ФЛАГОВ ===
 def get_bool_env(key: str, default: bool = True) -> bool:
     val = os.getenv(key, str(default)).lower()
     return val in ("true", "1", "yes", "on")
 
 
-# === НАСТРОЙКА ТОНА ===
 TONE_HINTS = {
     "sadness": "The user is feeling sad or fearful. Be gentle, supportive, and brief.",
     "fear": "The user is feeling sad or fearful. Be gentle, supportive, and brief.",
@@ -43,7 +42,6 @@ TONE_HINTS = {
 
 
 def get_llm_model():
-    """Возвращает настроенный LiteLlm в зависимости от AI_PROVIDER."""
     provider = os.getenv("AI_PROVIDER", "yandex").lower()
 
     retry_kwargs = {}
@@ -83,7 +81,6 @@ def get_llm_model():
 
 
 def get_memory_provider():
-    """Инициализирует RAG-провайдер в зависимости от настроек в .env."""
     if not get_bool_env("ENABLE_MEMORY", True):
         print("🚫 Память (RAG) отключена.")
         return None
@@ -94,15 +91,11 @@ def get_memory_provider():
         print(f"🧠 Используем внешний RAG: {url}")
         return HttpMemoryProvider(url, api_key=os.getenv("MEMORY_HTTP_API_KEY", ""))
 
-    # По умолчанию используем файловую заглушку
     print("🧠 Используем локальный файловый поиск (cold_storage.jsonl)")
     return FileMemoryProvider(os.path.join(BASE_DIR, "cold_storage.jsonl"))
 
 
 def get_static_instruction(context) -> str:
-    """Статичная инструкция. Читается из файла, если включен Prompt Management."""
-    
-    # 1. Пытаемся прочитать из файла (если включен флаг)
     if get_bool_env("ENABLE_PROMPT_FILE", True):
         prompt_path = pathlib.Path(BASE_DIR) / "prompts" / "agent_instruction.md"
         if prompt_path.exists():
@@ -114,7 +107,6 @@ def get_static_instruction(context) -> str:
         else:
             print(f"⚠️ Файл промпта не найден: {prompt_path}. Используем дефолтную инструкцию.")
 
-    # 2. Фолбэк на дефолтную инструкцию (если файла нет или флаг выключен)
     hitl_instruction = ""
     if get_bool_env("ENABLE_HITL", True):
         hitl_instruction = (
@@ -137,12 +129,8 @@ def get_static_instruction(context) -> str:
     )
 
 
-# ==========================================
-# СБОРКА АГЕНТА ИЗ КОМПОНЕНТОВ
-# ==========================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# 1. Инициализируем модули с учетом флагов
 analyzer = EmotionAnalyzer() if get_bool_env("ENABLE_EMOTION", True) else None
 sparsifier = TextSparsifier() if get_bool_env("ENABLE_SPARSIFIER", True) else None
 storage = ColdStorage(BASE_DIR) if get_bool_env("ENABLE_STORAGE", True) else None
@@ -162,7 +150,13 @@ guards_list = [shell_guard] if shell_guard else []
 file_tools = FileTools(BASE_DIR)
 memory_provider = get_memory_provider()
 
-# 2. Инициализируем SecretEditor
+# Память фактов (всегда включена, если есть ENABLE_FACTS)
+if get_bool_env("ENABLE_FACTS", True):
+    fact_memory = FactMemoryProvider(os.path.join(BASE_DIR, "facts.jsonl"))
+    print("🧠 Память фактов (facts.jsonl) включена.")
+else:
+    fact_memory = None
+
 if get_bool_env("ENABLE_SECRET_EDITOR", True):
     allowlist_path = os.getenv("SECRET_ALLOWLIST_PATH")
     if allowlist_path and not os.path.isabs(allowlist_path):
@@ -171,7 +165,6 @@ if get_bool_env("ENABLE_SECRET_EDITOR", True):
 else:
     secret_editor = None
 
-# 3. Собираем адаптер для ADK
 callbacks = ADKAgentCallbacks(
     analyzer=analyzer,
     sparsifier=sparsifier,
@@ -181,19 +174,29 @@ callbacks = ADKAgentCallbacks(
     guards=guards_list,
     secret_editor=secret_editor,
     enable_hitl=get_bool_env("ENABLE_HITL", True),
-    memory_provider=memory_provider,  # <--- ПЕРЕДАЕМ RAG
+    memory_provider=memory_provider,
+    fact_memory_provider=fact_memory,  # <--- НОВОЕ
 )
 
 
-# 4. Инструмент для подтверждения действий (HITL)
 def approve_action(tool_name: str, args_hash: str, tool_context: ToolContext) -> str:
-    """Одобряет выполнение опасного действия (HITL)."""
     state_key = f"hitl_approved_{tool_name}_{args_hash}"
     tool_context.state[state_key] = True
     return f"✅ Действие '{tool_name}' с хэшем {args_hash} одобрено пользователем. Вы можете снова вызвать этот инструмент."
 
 
-# 5. Загружаем Skills (Навыки) и собираем инструменты
+def remember_fact(fact: str, tool_context: ToolContext) -> str:
+    """Запоминает важный факт о пользователе.
+    
+    Args:
+        fact: Факт, который нужно запомнить (например, "Игорь не любит звонки").
+    """
+    if fact_memory is None:
+        return "❌ Память фактов отключена."
+    fact_memory.add_fact(fact, source="agent")
+    return f"✅ Факт запомнен: {fact}"
+
+
 skills_dir = pathlib.Path(BASE_DIR) / "skills"
 tools_list = [
     file_tools.run_shell_command,
@@ -204,6 +207,9 @@ tools_list = [
 if get_bool_env("ENABLE_HITL", True):
     tools_list.append(approve_action)
 
+if fact_memory is not None:
+    tools_list.append(remember_fact)
+
 if skills_dir.exists():
     print(f"📦 Загрузка навыков из {skills_dir}...")
     try:
@@ -213,11 +219,10 @@ if skills_dir.exists():
     except Exception as e:  # noqa: BLE001
         print(f"❌ Ошибка при загрузке навыков: {e}")
 
-# 6. Создаем агента
 root_agent = Agent(
     model=get_llm_model(),
     name="harness_test_agent",
-    description="Autonomous AI coding agent with universal harness, skills, feature flags, and RAG support.",
+    description="Autonomous AI coding agent with universal harness, skills, feature flags, RAG and facts memory.",
     instruction=get_static_instruction,
     tools=tools_list,
     before_model_callback=callbacks.before_model,

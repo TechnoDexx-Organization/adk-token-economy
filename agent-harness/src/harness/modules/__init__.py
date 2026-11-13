@@ -3,7 +3,7 @@
 from .analyzer import EmotionAnalyzer
 from .file_tools import FileTools
 from .guard import SafeToolGuard, ShellCommandGuard
-from .memory import FileMemoryProvider, HttpMemoryProvider, MemoryProvider
+from .memory import FactMemoryProvider, FileMemoryProvider, HttpMemoryProvider, MemoryProvider
 from .retry import build_retry_config, log_retry_attempt
 from .secret_editor import SecretEditor
 from .skills import build_safe_skill_toolset
@@ -17,15 +17,16 @@ __all__ = [
     "FileTools",
     "SafeToolGuard",
     "ShellCommandGuard",
+    "MemoryProvider",
+    "FileMemoryProvider",
+    "HttpMemoryProvider",
+    "FactMemoryProvider",
+    "build_retry_config",
+    "log_retry_attempt",
     "SecretEditor",
     "build_safe_skill_toolset",
     "TextSparsifier",
     "ColdStorage",
     "TokenCounter",
     "SlidingWindow",
-    "build_retry_config",
-    "log_retry_attempt",
-    "MemoryProvider",
-    "FileMemoryProvider",
-    "HttpMemoryProvider",
 ]

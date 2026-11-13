@@ -8,7 +8,7 @@ from google.genai.types import Content, Part
 
 # Импортируем модули из нашей же библиотеки
 from ..modules.analyzer import EmotionAnalyzer
-from ..modules.memory import MemoryProvider
+from ..modules.memory import FactMemoryProvider, MemoryProvider
 from ..modules.secret_editor import SecretEditor
 from ..modules.sparsifier import TextSparsifier
 from ..modules.storage import ColdStorage
@@ -31,6 +31,7 @@ class ADKAgentCallbacks:
         secret_editor: SecretEditor | None = None,
         enable_hitl: bool = True,
         memory_provider: MemoryProvider | None = None,
+        fact_memory_provider: FactMemoryProvider | None = None,  # <--- НОВОЕ
     ):
         self.analyzer = analyzer
         self.sparsifier = sparsifier
@@ -41,6 +42,7 @@ class ADKAgentCallbacks:
         self.secret_editor = secret_editor or SecretEditor()
         self.enable_hitl = enable_hitl
         self.memory_provider = memory_provider
+        self.fact_memory_provider = fact_memory_provider  # <--- НОВОЕ
         self.flag_key = "_processed"
         self.ledger_key = "_ledger_upto"
 
@@ -259,7 +261,6 @@ class ADKAgentCallbacks:
         if tone_hint and new_contents and new_contents[-1].role == "user" and new_contents[-1].parts:
             part = new_contents[-1].parts[0]
             prefix = f"{part.text}\n\n" if part.text else ""
-            # Создаем новый Part, так как оригинальный может быть иммутабельным
             new_part = Part(text=f"{prefix}[Tone hint: {tone_hint}]")
             new_parts = [new_part] + new_contents[-1].parts[1:]
             new_contents[-1] = Content(role="user", parts=new_parts)
@@ -275,10 +276,8 @@ class ADKAgentCallbacks:
             if not content.parts:
                 continue
             for part in content.parts:
-                # Явное присвоение для ty
                 resp = getattr(part, "function_response", None)
                 if resp is not None:
-                    # Используем walrus operator для Sourcery
                     if not (resp_id := getattr(resp, "id", None)):
                         raw = f"{resp.name}|{json.dumps(resp.response, sort_keys=True, ensure_ascii=False, default=str)}"
                         resp_id = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
@@ -297,30 +296,36 @@ class ADKAgentCallbacks:
                                     safe = f"{safe[:self.tool_response_max_chars]}\n...[TRUNCATED: {len(value)} -> {self.tool_response_max_chars}]"
                                 response[key] = safe
 
-    # ──────────── шаг 6: RAG (поиск в памяти) ────────────
+    # ──────────── шаг 6: RAG и факты ────────────
 
     def _apply_memory_search(self, new_contents: list) -> None:
-        """Ищет контекст в RAG по последнему сообщению пользователя."""
-        if not self.memory_provider or not new_contents:
+        """Ищет контекст в RAG и фактах по последнему сообщению пользователя."""
+        if not new_contents:
             return
 
         if new_contents[-1].role == "user" and new_contents[-1].parts:
             part = new_contents[-1].parts[0]
-            # Используем walrus operator для Sourcery
             if query := (getattr(part, "text", "") or ""):
-                if memories := self.memory_provider.search(query, limit=3):
-                    self._inject_memories_into_context(memories, query, new_contents)
+                mem_text = ""
 
-    def _inject_memories_into_context(self, memories: list, query: str, new_contents: list) -> None:
-        """Вспомогательный метод для вставки найденного контекста в сообщение."""
-        # Используем f-string для Sourcery
-        joined_memories = "\n".join(f"- {m}" for m in memories)
-        mem_text = f"\n\n[Relevant context from past conversations]:\n{joined_memories}"
+                # 1. Поиск в сырых логах (RAG)
+                if self.memory_provider:
+                    if memories := self.memory_provider.search(query, limit=3):
+                        joined = "\n".join(f"- {m}" for m in memories)
+                        mem_text += f"\n\n[Relevant context from past conversations]:\n{joined}"
+                        print(f"🧠 Найдено {len(memories)} фрагментов в памяти.")
 
-        new_part = Part(text=query + mem_text)
-        new_parts = [new_part] + new_contents[-1].parts[1:]
-        new_contents[-1] = Content(role="user", parts=new_parts)
-        print(f"🧠 Найдено {len(memories)} фрагментов в памяти.")
+                # 2. Поиск в фактах
+                if self.fact_memory_provider:
+                    if facts := self.fact_memory_provider.search(query, limit=5):
+                        joined_facts = "\n".join(f"- {f}" for f in facts)
+                        mem_text += f"\n\n[Known facts about user]:\n{joined_facts}"
+                        print(f"🧠 Найдено {len(facts)} фактов о пользователе.")
+
+                if mem_text:
+                    new_part = Part(text=query + mem_text)
+                    new_parts = [new_part] + new_contents[-1].parts[1:]
+                    new_contents[-1] = Content(role="user", parts=new_parts)
 
     # ─────────────────────── сборка ───────────────────────
 

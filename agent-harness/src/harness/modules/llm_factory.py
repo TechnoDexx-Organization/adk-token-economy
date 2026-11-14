@@ -1,8 +1,11 @@
+import logging
 import os
 
 from google.adk.models.lite_llm import LiteLlm
 
 from .retry import build_retry_config
+
+logger = logging.getLogger(__name__)
 
 
 def _get_bool_env(key: str, default: bool = True) -> bool:
@@ -21,45 +24,57 @@ def build_llm_model(provider: str | None = None) -> LiteLlm:
     provider = (provider or os.getenv("AI_PROVIDER", "yandex")).lower()
 
     # Подготавливаем конфигурацию retry (если включена)
-    retry_kwargs = {}
+    retry_kwargs: dict = {}
     if _get_bool_env("ENABLE_RETRY", True):
         retry_kwargs = build_retry_config(
             max_retries=int(os.getenv("RETRY_MAX_ATTEMPTS", "3")),
             timeout_seconds=int(os.getenv("RETRY_TIMEOUT_SECONDS", "60")),
             backoff_factor=float(os.getenv("RETRY_BACKOFF_FACTOR", "2.0")),
         )
-        print(f"🔁 Retry Logic включен: max_retries={retry_kwargs.get('max_retries')}, timeout={retry_kwargs.get('timeout')}s")
+        logger.info("🔁 Retry Logic включен: max_retries=%s, timeout=%ss",
+                    retry_kwargs.get('max_retries'), retry_kwargs.get('timeout'))
     else:
-        print("🚫 Retry Logic отключен (ENABLE_RETRY=false)")
+        logger.info("🚫 Retry Logic отключен (ENABLE_RETRY=false)")
 
     if provider == "selectel":
-        print("🔌 Используем Selectel AI Gateway (напрямую)")
+        logger.info("🔌 Используем Selectel AI Gateway (напрямую)")
+        api_key = os.getenv("SELECTEL_API_KEY")
+        if not api_key:
+            raise ValueError("❌ SELECTEL_API_KEY не задан в окружении")
         return LiteLlm(
             model="openai/deepseek/deepseek-v4.1-flash",
             api_base="https://api.selectel.ru/aig/v1",
-            api_key=os.getenv("SELECTEL_API_KEY"),
+            api_key=api_key,
             reasoning_effort="off",
             **retry_kwargs,
         )
 
     if provider == "selectel_router":
         router_model = os.getenv("SELECTEL_ROUTER_MODEL", "moonshotai/kimi-k2.6")
-        print(f"🔌 Используем Selectel AI Router (модель: {router_model})")
+        logger.info("🔌 Используем Selectel AI Router (модель: %s)", router_model)
+        api_key = os.getenv("SELECTEL_API_KEY")
+        if not api_key:
+            raise ValueError("❌ SELECTEL_API_KEY не задан в окружении")
         return LiteLlm(
             model=f"openai/{router_model}",
             api_base="https://api.selectel.ru/aig/v1",
-            api_key=os.getenv("SELECTEL_API_KEY"),
+            api_key=api_key,
             reasoning_effort=os.getenv("SELECTEL_ROUTER_REASONING", "low"),
             **retry_kwargs,
         )
 
     if provider == "yandex":
-        print("🔌 Используем Yandex AI Studio")
+        logger.info("🔌 Используем Yandex AI Studio")
         folder_id = os.getenv("YANDEX_FOLDER_ID")
+        api_key = os.getenv("YANDEX_API_KEY")
+        if not folder_id:
+            raise ValueError("❌ YANDEX_FOLDER_ID не задан в окружении")
+        if not api_key:
+            raise ValueError("❌ YANDEX_API_KEY не задан в окружении")
         return LiteLlm(
             model=f"openai/gpt://{folder_id}/deepseek-v4.1-flash/latest",
             api_base=os.getenv("YANDEX_API_BASE"),
-            api_key=os.getenv("YANDEX_API_KEY"),
+            api_key=api_key,
             extra_headers={"OpenAI-Project": folder_id},
             reasoning_effort="none",
             **retry_kwargs,

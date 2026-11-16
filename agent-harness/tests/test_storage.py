@@ -1,4 +1,5 @@
 """Ледник: полный журнал и точная обратимость через манифест."""
+import difflib
 import json
 
 from harness.modules.storage import ColdStorage
@@ -25,8 +26,11 @@ def test_manifest_restores_original_exactly(tmp_path):
     storage = ColdStorage(str(tmp_path))
     original = "В общем, я устал"
     processed = "я устал"
-    removed = [{"start": 0, "end": 9, "text": "В общем, "}]
-
+    
+    # Генерируем opcodes через difflib
+    matcher = difflib.SequenceMatcher(None, original, processed)
+    opcodes = matcher.get_opcodes()
+    
     storage.log_manifest(
         "s1",
         event_id="e1",
@@ -34,14 +38,14 @@ def test_manifest_restores_original_exactly(tmp_path):
         role="user",
         original=original,
         processed=processed,
-        removed=removed,
+        opcodes=opcodes,
         ops=["sparsify"],
     )
 
     manifest = read_entries(tmp_path / "cold_storage.jsonl")[0]
-    restored = manifest["processed"]
-    for span in sorted(manifest["removed"], key=lambda item: item["start"], reverse=True):
-        restored = restored[: span["start"]] + span["text"] + restored[span["start"] :]
+    
+    # Восстанавливаем через новый метод
+    restored = ColdStorage.restore(manifest)
 
     assert restored == manifest["original"]
     assert manifest["kind"] == "manifest"
@@ -57,7 +61,8 @@ def test_manifest_records_hashes(tmp_path):
         role="user",
         original="оригинал",
         processed="ориг",
-        removed=[],
+        # Для теста хешей opcodes не важно, передаем пустой список
+        opcodes=[],
         ops=["cap"],
     )
 

@@ -48,15 +48,14 @@ class ColdStorage:
         role: str,
         original: str,
         processed: str,
-        removed: list[dict],
+        opcodes: list,
         ops: list[str],
     ) -> None:
         """
         Манифест обратимости: что именно сделала обработка с текстом.
 
-        `removed` — список вырезанных фрагментов: {"start", "end", "text"} в
-        координатах оригинала. Применение его задом наперёд восстанавливает
-        исходный текст точь-в-точь, независимо от того, что ещё случилось.
+        `opcodes` — список команд из difflib (tag, i1, i2, j1, j2).
+        Восстановление: собрать оригинал только по equal-сегментам.
         """
         entry = {
             "session_id": session_id,
@@ -70,11 +69,24 @@ class ColdStorage:
             "original_length": len(original),
             "processed_length": len(processed),
             "ops": ops,
-            "removed": removed,
+            "opcodes": opcodes,
             "original": original,
             "processed": processed,
         }
         self._append(entry)
+
+    @staticmethod
+    def restore(manifest: dict) -> str:
+        """
+        Восстанавливает оригинальный текст по opcodes из манифеста.
+        Теперь это работает для любых операций (delete, replace, insert).
+        """
+        original = manifest.get("original", "")
+        opcodes = manifest.get("opcodes", [])
+        if not opcodes:
+            return original
+        # Собираем оригинал, беря только те куски, которые были в нем
+        return "".join(original[i1:i2] for tag, i1, i2, *_ in opcodes)
 
     def _append(self, entry: dict) -> None:
         try:

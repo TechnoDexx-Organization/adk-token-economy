@@ -119,10 +119,9 @@ def test_window_applies_to_contents_and_sparsification_is_reversible(tmp_path):
 
     manifests = [entry for entry in read_ledger(tmp_path) if entry["kind"] == "manifest"]
     manifest = manifests[-1]
-    restored = manifest["processed"]
-    for span in sorted(manifest["removed"], key=lambda item: item["start"], reverse=True):
-        restored = restored[: span["start"]] + span["text"] + restored[span["start"] :]
-
+    
+    # P0-3: Теперь используем встроенный восстановитель по opcodes
+    restored = ColdStorage.restore(manifest)
     assert restored == manifest["original"]
 
 

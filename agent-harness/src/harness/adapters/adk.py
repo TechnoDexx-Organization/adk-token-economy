@@ -6,7 +6,7 @@ from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import LlmRequest, LlmResponse
 from google.genai.types import Content, Part
 
-# Импортируем модули из нашей же библиотеки
+from ..core.interfaces import GuardDecision
 from ..modules.analyzer import EmotionAnalyzer
 from ..modules.memory import FactMemoryProvider, MemoryProvider
 from ..modules.secret_editor import SecretEditor
@@ -388,16 +388,34 @@ class ADKAgentCallbacks:
         callback_context.state[self.flag_key] = True
 
     def before_tool(self, tool, args, tool_context):
+        force_hitl = False
+        is_safe = False
+        
+        # Опрашиваем все Guard'ы (строго через GuardDecision)
         for guard in self.guards:
-            if not guard.check(tool.name, args, {}):
+            decision = guard.check(tool.name, args, {})
+            if decision == GuardDecision.DENY:
                 return {"error": f"Tool '{tool.name}' blocked by security guard."}
+            elif decision == GuardDecision.REQUIRE_HITL:
+                force_hitl = True
+            elif decision == GuardDecision.ALLOW:
+                is_safe = True
 
-        if self.enable_hitl and tool.name in self.hitl_tools:
+        # Определяем, нужен ли HITL
+        needs_hitl = False
+        if force_hitl:
+            needs_hitl = True
+        elif not is_safe and self.enable_hitl and tool.name in self.hitl_tools:
+            needs_hitl = True
+
+        if needs_hitl:
             args_str = json.dumps(args, sort_keys=True, ensure_ascii=False)
             args_hash = hashlib.md5(args_str.encode("utf-8")).hexdigest()[:8]
             state_key = f"hitl_approved_{tool.name}_{args_hash}"
 
-            if not tool_context.state.get(state_key):
+            # Безопасно читаем state (в тестах tool_context может быть None)
+            state = getattr(tool_context, "state", {})
+            if not state.get(state_key):
                 return {
                     "status": "confirmation_required",
                     "message": (

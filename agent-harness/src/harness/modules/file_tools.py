@@ -1,34 +1,37 @@
 import subprocess
 from pathlib import Path
 
-from .guard import ShellCommandGuard  # Импортируем наш охранник
+from ..core.interfaces import GuardDecision
+from .guard import ShellCommandGuard
 
 
 class FileTools:
-    """Инструменты для безопасной работы с файловой системой и запуска команд."""
-
     def __init__(self, base_dir: str, guard: ShellCommandGuard | None = None):
         self.base_dir = Path(base_dir).resolve()
-        # Позволяем передать кастомный guard, или создаем дефолтный
         self.guard = guard or ShellCommandGuard()
 
     def run_shell_command(self, command: str) -> str:
-        """Выполняет shell-команду с таймаутом и проверкой безопасности (Defense in depth)."""
+        # 1. Проверка безопасности
+        decision = self.guard.check(
+            tool_name="run_shell_command", 
+            args={"command": command}, 
+            context={}
+        )
         
-        # ГЛАВНАЯ ЗАЩИТА: проверяем команду здесь, внутри метода.
-        # Даже если адаптер (ADKAgentCallbacks) пропустит вызов, мы его перехватим.
-        if not self.guard.check(tool_name="run_shell_command", args={"command": command}, context={}):
-            return "🚫 Ошибка безопасности: Команда заблокирована (ShellCommandGuard)."
+        if decision == GuardDecision.DENY:
+            return "🚫 Ошибка безопасности: Команда заблокирована (DENY)."
+        
+        if decision == GuardDecision.REQUIRE_HITL:
+            return (
+                "⚠️ Требуется подтверждение: Эта команда не в белом списке. "
+                "Пожалуйста, спросите пользователя, разрешить ли её выполнение."
+            )
 
+        # 2. Выполнение
         try:
             result = subprocess.run(
-                command,
-                check=False,
-                shell=True,
-                capture_output=True,
-                text=True,
-                timeout=15,
-                cwd=self.base_dir,
+                command, check=False, shell=True, capture_output=True,
+                text=True, timeout=15, cwd=self.base_dir,
             )
             output = result.stdout.strip()
             if result.stderr:
@@ -36,46 +39,38 @@ class FileTools:
             return output or "Команда выполнена успешно (нет вывода)."
         except subprocess.TimeoutExpired:
             return "❌ Ошибка: Команда превысила лимит времени (15 секунд)."
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return f"❌ Ошибка выполнения: {e!s}"
 
     def write_file(self, filename: str, content: str) -> str:
-        """Записывает код в файл внутри проекта."""
         file_path = self._resolve_safe_path(filename)
-        if isinstance(file_path, str):  # Ошибка безопасности
+        if isinstance(file_path, str): 
             return file_path
-
         try:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)
             return f"✅ Файл '{filename}' успешно записан."
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return f"❌ Ошибка записи файла: {e!s}"
 
     def read_file(self, filename: str) -> str:
-        """Читает содержимое файла внутри проекта (макс 50 КБ)."""
         file_path = self._resolve_safe_path(filename)
-        if isinstance(file_path, str):  # Ошибка безопасности
+        if isinstance(file_path, str): 
             return file_path
-
         if not file_path.exists():
             return f"❌ Файл '{filename}' не найден."
-
         try:
             if file_path.stat().st_size > 50_000:
                 return "❌ Ошибка: файл слишком большой (больше 50 КБ)."
             return file_path.read_text(encoding="utf-8")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return f"❌ Ошибка чтения файла: {e!s}"
 
     def _resolve_safe_path(self, filename: str) -> Path | str:
-        """Проверяет, что путь не выходит за пределы base_dir."""
         if ".." in filename or filename.startswith("/"):
             return "❌ Ошибка безопасности: выход за пределы проекта запрещен."
-        
         target = (self.base_dir / filename).resolve()
         if not target.is_relative_to(self.base_dir):
             return "❌ Ошибка безопасности: выход за пределы проекта запрещен."
-        
         return target

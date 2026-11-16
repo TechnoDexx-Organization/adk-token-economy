@@ -5,6 +5,7 @@ from conftest import make_event
 from google.genai.types import FunctionCall, Part
 
 from harness.adapters.adk import ADKAgentCallbacks
+from harness.core.interfaces import GuardDecision
 from harness.modules.storage import ColdStorage
 from harness.modules.window import SlidingWindow
 
@@ -162,7 +163,9 @@ def test_function_call_parts_are_preserved(tmp_path):
 def test_guard_blocks_dangerous_tool():
     class Guard:
         def check(self, tool_name, args, context):
-            return tool_name != "run_shell_command"
+            if tool_name == "run_shell_command":
+                return GuardDecision.DENY
+            return GuardDecision.ALLOW
 
     class Tool:
         name = "run_shell_command"

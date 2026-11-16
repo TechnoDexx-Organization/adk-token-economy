@@ -16,6 +16,10 @@ from ..modules.window import SlidingWindow
 
 
 class ADKAgentCallbacks:
+    """
+    Класс-адаптер, который транслирует логику Harness в колбэки Google ADK.
+    """
+
     def __init__(
         self,
         analyzer: EmotionAnalyzer | None = None,
@@ -35,7 +39,8 @@ class ADKAgentCallbacks:
         self.window = window
         self.tone_hints = tone_hints or {}
         self.guards = guards or []
-        self.secret_editor = secret_editor or SecretEditor()
+        # Передаем storage в SecretEditor, чтобы аудит работал
+        self.secret_editor = secret_editor or SecretEditor(storage=storage)
         self.enable_hitl = enable_hitl
         self.memory_provider = memory_provider
         self.fact_memory_provider = fact_memory_provider
@@ -218,7 +223,14 @@ class ADKAgentCallbacks:
                 continue
             parts: list[Part] = []
             final_text = self._final_text(session_id, event)
-            safe_text = self.secret_editor.redact(final_text) if self.secret_editor else final_text
+            safe_text = self.secret_editor.redact(
+                final_text, 
+                session_id=session_id, 
+                event_id=self._event_key(event), 
+                invocation_id=getattr(event, "invocation_id", ""), 
+                role=self._role_of(event)
+            ) if self.secret_editor else final_text
+            
             is_first_text = True
             for part in content.parts:
                 if part.text:
@@ -267,7 +279,12 @@ class ADKAgentCallbacks:
                         changed = False
                         for key, value in new_response.items():
                             if isinstance(value, str):
-                                safe = self.secret_editor.redact(value)
+                                safe = self.secret_editor.redact(
+                                    value, 
+                                    session_id=session_id, 
+                                    event_id="tool_response", 
+                                    role="tool"
+                                )
                                 if len(safe) > self.tool_response_max_chars:
                                     safe = f"{safe[:self.tool_response_max_chars]}\n...[TRUNCATED: {len(value)} -> {self.tool_response_max_chars}]"
                                 if safe != value:
@@ -278,7 +295,7 @@ class ADKAgentCallbacks:
                             new_part = part.model_copy(update={"function_response": new_resp})
                             content.parts[idx] = new_part
 
-    def _apply_memory_search(self, new_contents: list) -> None:
+    def _apply_memory_search(self, session_id: str, new_contents: list) -> None:
         if not new_contents:
             return
         if new_contents[-1].role == "user" and new_contents[-1].parts:
@@ -296,7 +313,12 @@ class ADKAgentCallbacks:
                         mem_text += f"\n\n[Known facts about user]:\n{joined_facts}"
                         print(f"🧠 Найдено {len(facts)} фактов о пользователе.")
                 if mem_text:
-                    safe_mem_text = self.secret_editor.redact(mem_text) if self.secret_editor else mem_text
+                    safe_mem_text = self.secret_editor.redact(
+                        mem_text, 
+                        session_id=session_id, 
+                        event_id="memory_context", 
+                        role="system"
+                    ) if self.secret_editor else mem_text
                     new_part = Part(text=query + safe_mem_text)
                     new_parts = [new_part] + new_contents[-1].parts[1:]
                     new_contents[-1] = Content(role="user", parts=new_parts)
@@ -313,7 +335,7 @@ class ADKAgentCallbacks:
         new_contents = self._build_contents(session.id, selected)
         self._process_tool_responses(session.id, new_contents)
         if not is_tool_step:
-            self._apply_memory_search(new_contents)
+            self._apply_memory_search(session.id, new_contents)
             self._apply_tone_hint(new_contents, callback_context)
         window = self.window
         if window is not None:

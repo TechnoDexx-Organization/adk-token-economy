@@ -75,6 +75,28 @@ class ColdStorage:
         }
         self._append(entry)
 
+    def log_redaction(
+        self,
+        session_id: str,
+        *,
+        event_id: str,
+        invocation_id: str = "",
+        role: str = "user",
+        original_text: str,
+    ) -> None:
+        """Логирует факт скрытия секрета (без сохранения самого секрета)."""
+        entry = {
+            "session_id": session_id,
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "kind": "redaction",
+            "role": role,
+            "invocation_id": invocation_id,
+            "event_id": event_id,
+            "sha256": hashlib.sha256(original_text.encode("utf-8")).hexdigest(),
+            "original_length": len(original_text),
+        }
+        self._append(entry)
+
     @staticmethod
     def restore(manifest: dict) -> str:
         """

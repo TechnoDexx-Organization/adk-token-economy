@@ -4,6 +4,8 @@ import pathlib
 import re
 from collections import Counter
 
+from .storage import ColdStorage
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,7 +15,8 @@ class SecretEditor:
     из текста перед отправкой в LLM.
     """
 
-    def __init__(self, allowlist_path: str | None = None):
+    def __init__(self, allowlist_path: str | None = None, storage: ColdStorage | None = None):
+        self.storage = storage
         # Уровень 1: Регулярки (явные секреты)
         self.secret_patterns = [
             re.compile(r"sk-[a-zA-Z0-9\-_]{20,}"),  # OpenAI
@@ -100,7 +103,15 @@ class SecretEditor:
 
         return False
 
-    def redact(self, text: str) -> str:
+    def redact(
+        self, 
+        text: str, 
+        *, 
+        session_id: str = "", 
+        event_id: str = "", 
+        invocation_id: str = "", 
+        role: str = "user"
+    ) -> str:
         if not text:
             return text
 
@@ -116,6 +127,14 @@ class SecretEditor:
                 logger.warning(
                     f"🛡️ SecretEditor: скрыт потенциальный секрет (длина {len(word)})"
                 )
+                if self.storage:
+                    self.storage.log_redaction(
+                        session_id,
+                        event_id=event_id,
+                        invocation_id=invocation_id,
+                        role=role,
+                        original_text=word,
+                    )
                 safe_words.append("[REDACTED]")
             else:
                 safe_words.append(word)

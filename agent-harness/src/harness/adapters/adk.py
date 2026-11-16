@@ -49,13 +49,14 @@ class ADKAgentCallbacks:
         # Настройки HITL и лимитов
         self.hitl_tools = {"run_shell_command", "write_file"}
         self.tool_response_max_chars = 10_000
-        self._processed_tool_ids: set[str] = set()
-
-        # Кэши
+        
+        # Мультитенантные кэши (ключи будут с префиксом session_id)
         self._sparse_cache: dict[str, str] = {}
         self._emotion_cache: dict[str, str] = {}
         self._final_cache: dict[str, str] = {}
-        self._session_id: str = ""
+        self._processed_tool_ids: set[str] = set()
+        
+        self._cache_max_size = 4096
 
     # ─────────────────────────── утилиты ───────────────────────────
 
@@ -70,6 +71,10 @@ class ADKAgentCallbacks:
         raw = f"{getattr(event, 'author', '')}|{getattr(event, 'invocation_id', '')}|{self._event_to_text(event)}"
         return "synthetic-" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
+    def _cache_key(self, session_id: str, event_key: str) -> str:
+        """Мультитенантный ключ: изолирует кэш по сессиям."""
+        return f"{session_id}:{event_key}"
+
     def _role_of(self, event) -> str:
         return "user" if getattr(event, "author", "") == "user" else "model"
 
@@ -82,6 +87,13 @@ class ADKAgentCallbacks:
             if tag in ("delete", "replace") and i2 > i1
         ]
         return removed
+
+    def _evict_lru(self, cache: dict):
+        """LRU-очистка: удаляет самые старые записи, не трогая остальные."""
+        while len(cache) > self._cache_max_size:
+            # В Python 3.7+ dict сохраняет порядок вставки. Первый ключ — самый старый.
+            oldest_key = next(iter(cache))
+            del cache[oldest_key]
 
     # ─────────────────────── шаг 1: ледник ───────────────────────
 
@@ -146,27 +158,30 @@ class ADKAgentCallbacks:
             return None
 
         original = self._event_to_text(last_user_event)
-        key = self._event_key(last_user_event)
+        event_key = self._event_key(last_user_event)
+        cache_key = self._cache_key(session.id, event_key)
         invocation_id = getattr(last_user_event, "invocation_id", "") or ""
 
         if self.analyzer:
-            emotion = self._emotion_cache.get(key)
+            emotion = self._emotion_cache.get(cache_key)
             if emotion is None:
                 emotion = self.analyzer.analyze(original)
-                self._emotion_cache[key] = emotion
+                self._evict_lru(self._emotion_cache)
+                self._emotion_cache[cache_key] = emotion
             callback_context.state["current_emotion"] = emotion
 
         processed = original
         if self.sparsifier:
-            cached = self._sparse_cache.get(key)
+            cached = self._sparse_cache.get(cache_key)
             if cached is None:
                 processed = self.sparsifier.process(original, {})
-                self._sparse_cache[key] = processed
-                self._final_cache.pop(key, None)
+                self._evict_lru(self._sparse_cache)
+                self._sparse_cache[cache_key] = processed
+                self._final_cache.pop(cache_key, None)
                 if self.storage and processed != original:
                     self.storage.log_manifest(
                         session.id,
-                        event_id=key,
+                        event_id=event_key,
                         invocation_id=invocation_id,
                         role="user",
                         original=original,
@@ -181,27 +196,30 @@ class ADKAgentCallbacks:
 
     # ───────────────────── шаг 3: окно ─────────────────────
 
-    def _final_text(self, event) -> str:
-        key = self._event_key(event)
-        cached = self._final_cache.get(key)
+    def _final_text(self, session_id: str, event) -> str:
+        event_key = self._event_key(event)
+        cache_key = self._cache_key(session_id, event_key)
+        
+        cached = self._final_cache.get(cache_key)
         if cached is not None:
             return cached
 
         text = self._event_to_text(event)
         if self._role_of(event) == "user":
-            text = self._sparse_cache.get(key, text)
+            text = self._sparse_cache.get(cache_key, text)
 
         window = self.window
         if window is not None:
             compacted = window.compact(text)
             if compacted != text:
-                self._log_cap_manifest(event, text, compacted)
+                self._log_cap_manifest(session_id, event, text, compacted)
                 text = compacted
 
-        self._final_cache[key] = text
+        self._evict_lru(self._final_cache)
+        self._final_cache[cache_key] = text
         return text
 
-    def _log_cap_manifest(self, event, original: str, processed: str) -> None:
+    def _log_cap_manifest(self, session_id: str, event, original: str, processed: str) -> None:
         if not self.storage:
             return
         head_length = processed.find("\n…[сокращено")
@@ -209,7 +227,7 @@ class ADKAgentCallbacks:
         removed_start = max(head_length, 0)
         removed_end = tail_start + 3 if tail_start >= 0 else len(original)
         self.storage.log_manifest(
-            "",
+            session_id,
             event_id=self._event_key(event),
             invocation_id=getattr(event, "invocation_id", "") or "",
             role=self._role_of(event),
@@ -224,13 +242,13 @@ class ADKAgentCallbacks:
         window = self.window
         if window is None:
             return events
-        return window.select(events, size=self._final_size)
+        return window.select(events, size=lambda e: self._final_size(session.id, e))
 
-    def _final_size(self, event) -> int:
+    def _final_size(self, session_id: str, event) -> int:
         window = self.window
-        return 0 if window is None else window.count(self._final_text(event))
+        return 0 if window is None else window.count(self._final_text(session_id, event))
 
-    def _build_contents(self, events: list) -> list:
+    def _build_contents(self, session_id: str, events: list) -> list:
         contents: list[Content] = []
         for event in events:
             content = event.content
@@ -238,14 +256,13 @@ class ADKAgentCallbacks:
                 continue
 
             parts: list[Part] = []
-            final_text = self._final_text(event)
+            final_text = self._final_text(session_id, event)
             safe_text = self.secret_editor.redact(final_text) if self.secret_editor else final_text
             is_first_text = True
             
             for part in content.parts:
                 if part.text:
                     if is_first_text:
-                        # P0-2 FIX: Вставляем полный текст только в первую часть
                         parts.append(Part(text=safe_text))
                         is_first_text = False
                 else:
@@ -273,8 +290,7 @@ class ADKAgentCallbacks:
 
     # ──────────── шаг 5: обработка ответов инструментов ────────────
 
-    def _process_tool_responses(self, contents: list[Content]) -> None:
-        """Обрабатывает function_response в contents (только новые, по ID)."""
+    def _process_tool_responses(self, session_id: str, contents: list[Content]) -> None:
         if not self.secret_editor:
             return
 
@@ -288,10 +304,16 @@ class ADKAgentCallbacks:
                         raw = f"{resp.name}|{json.dumps(resp.response, sort_keys=True, ensure_ascii=False, default=str)}"
                         resp_id = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
-                    if resp_id in self._processed_tool_ids:
+                    # Мультитенантный ID для тулзов
+                    cache_key = self._cache_key(session_id, resp_id)
+
+                    if cache_key in self._processed_tool_ids:
                         continue
 
-                    self._processed_tool_ids.add(resp_id)
+                    if len(self._processed_tool_ids) > self._cache_max_size:
+                        self._processed_tool_ids.clear()
+                        
+                    self._processed_tool_ids.add(cache_key)
 
                     response = resp.response
                     if isinstance(response, dict):
@@ -307,7 +329,6 @@ class ADKAgentCallbacks:
                                     changed = True
                         
                         if changed:
-                            # P0-7 FIX: Не мутируем объект на месте, а создаем копию
                             new_resp = resp.model_copy(update={"response": new_response})
                             new_part = part.model_copy(update={"function_response": new_resp})
                             content.parts[idx] = new_part
@@ -315,7 +336,6 @@ class ADKAgentCallbacks:
     # ──────────── шаг 6: RAG и факты ────────────
 
     def _apply_memory_search(self, new_contents: list) -> None:
-        """Ищет контекст в RAG и фактах по последнему сообщению пользователя."""
         if not new_contents:
             return
 
@@ -324,14 +344,12 @@ class ADKAgentCallbacks:
             if query := (getattr(part, "text", "") or ""):
                 mem_text = ""
 
-                # 1. Поиск в сырых логах (RAG)
                 if self.memory_provider:
                     if memories := self.memory_provider.search(query, limit=3):
                         joined = "\n".join(f"- {m}" for m in memories)
                         mem_text += f"\n\n[Relevant context from past conversations]:\n{joined}"
                         print(f"🧠 Найдено {len(memories)} фрагментов в памяти.")
 
-                # 2. Поиск в фактах
                 if self.fact_memory_provider:
                     if facts := self.fact_memory_provider.search(query, limit=5):
                         joined_facts = "\n".join(f"- {f}" for f in facts)
@@ -339,8 +357,6 @@ class ADKAgentCallbacks:
                         print(f"🧠 Найдено {len(facts)} фактов о пользователе.")
 
                 if mem_text:
-                    # КРИТИЧНО: прогоняем найденное через SecretEditor,
-                    # чтобы память не могла протащить секреты в обход защиты.
                     safe_mem_text = self.secret_editor.redact(mem_text) if self.secret_editor else mem_text
                     new_part = Part(text=query + safe_mem_text)
                     new_parts = [new_part] + new_contents[-1].parts[1:]
@@ -353,23 +369,20 @@ class ADKAgentCallbacks:
         if not session:
             return
 
-        self._ledger_new_events(session, callback_context)
+        # P0-4 FIX: Мультитенантность. Никаких clear(), только изоляция по ключу.
+        # self._session_id больше не нужен.
 
-        # P0-1 FIX: Определяем шаг, но больше не делаем ранний return
+        self._ledger_new_events(session, callback_context)
         is_tool_step = callback_context.state.get(self.flag_key, False)
 
         if not is_tool_step:
-            self._session_id = session.id
             self._process_last_user_message(session, callback_context)
 
-        # Применяем окно к истории всегда (и на первом шаге, и на шаге с инструментами)
         selected = self._select_events(session)
-        new_contents = self._build_contents(selected)
+        new_contents = self._build_contents(session.id, selected)
 
-        # Прогоняем ответы инструментов через DLP (безопасные копии)
-        self._process_tool_responses(new_contents)
+        self._process_tool_responses(session.id, new_contents)
 
-        # RAG, факты и тон применяем ТОЛЬКО на первом шаге (не на шаге с инструментами)
         if not is_tool_step:
             self._apply_memory_search(new_contents)
             self._apply_tone_hint(new_contents, callback_context)
@@ -377,13 +390,12 @@ class ADKAgentCallbacks:
         window = self.window
         if window is not None:
             mode = window.describe()
-            total_tokens = sum(window.count(self._final_text(event)) for event in selected)
+            total_tokens = sum(window.count(self._final_text(session.id, event)) for event in selected)
         else:
             mode = "вся история"
             total_tokens = 0
         print(f"=== КОНТЕКСТ ({mode}; сообщений: {len(new_contents)}; ~{total_tokens} токенов) ===")
         
-        # Перезаписываем контент, который ADK подготовил для модели
         llm_request.contents = new_contents
         callback_context.state[self.flag_key] = True
 
@@ -391,7 +403,6 @@ class ADKAgentCallbacks:
         force_hitl = False
         is_safe = False
         
-        # Опрашиваем все Guard'ы (строго через GuardDecision)
         for guard in self.guards:
             decision = guard.check(tool.name, args, {})
             if decision == GuardDecision.DENY:
@@ -401,7 +412,6 @@ class ADKAgentCallbacks:
             elif decision == GuardDecision.ALLOW:
                 is_safe = True
 
-        # Определяем, нужен ли HITL
         needs_hitl = False
         if force_hitl:
             needs_hitl = True
@@ -413,7 +423,6 @@ class ADKAgentCallbacks:
             args_hash = hashlib.md5(args_str.encode("utf-8")).hexdigest()[:8]
             state_key = f"hitl_approved_{tool.name}_{args_hash}"
 
-            # Безопасно читаем state (в тестах tool_context может быть None)
             state = getattr(tool_context, "state", {})
             if not state.get(state_key):
                 return {

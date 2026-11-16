@@ -1,16 +1,25 @@
-import os
 import subprocess
 from pathlib import Path
+
+from .guard import ShellCommandGuard  # Импортируем наш охранник
 
 
 class FileTools:
     """Инструменты для безопасной работы с файловой системой и запуска команд."""
 
-    def __init__(self, base_dir: str):
+    def __init__(self, base_dir: str, guard: ShellCommandGuard | None = None):
         self.base_dir = Path(base_dir).resolve()
+        # Позволяем передать кастомный guard, или создаем дефолтный
+        self.guard = guard or ShellCommandGuard()
 
     def run_shell_command(self, command: str) -> str:
-        """Выполняет shell-команду с таймаутом и в рабочей директории проекта."""
+        """Выполняет shell-команду с таймаутом и проверкой безопасности (Defense in depth)."""
+        
+        # ГЛАВНАЯ ЗАЩИТА: проверяем команду здесь, внутри метода.
+        # Даже если адаптер (ADKAgentCallbacks) пропустит вызов, мы его перехватим.
+        if not self.guard.check(tool_name="run_shell_command", args={"command": command}, context={}):
+            return "🚫 Ошибка безопасности: Команда заблокирована (ShellCommandGuard)."
+
         try:
             result = subprocess.run(
                 command,

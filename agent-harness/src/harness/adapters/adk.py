@@ -238,13 +238,19 @@ class ADKAgentCallbacks:
                 continue
 
             parts: list[Part] = []
+            final_text = self._final_text(event)
+            safe_text = self.secret_editor.redact(final_text) if self.secret_editor else final_text
+            is_first_text = True
+            
             for part in content.parts:
                 if part.text:
-                    final_text = self._final_text(event)
-                    safe_text = self.secret_editor.redact(final_text) if self.secret_editor else final_text
-                    parts.append(Part(text=safe_text))
+                    if is_first_text:
+                        # P0-2 FIX: Вставляем полный текст только в первую часть
+                        parts.append(Part(text=safe_text))
+                        is_first_text = False
                 else:
                     parts.append(part)
+                    
             if parts:
                 contents.append(Content(role=self._role_of(event), parts=parts))
         return contents
@@ -267,15 +273,15 @@ class ADKAgentCallbacks:
 
     # ──────────── шаг 5: обработка ответов инструментов ────────────
 
-    def _process_tool_responses(self, llm_request: LlmRequest) -> None:
-        """Обрабатывает function_response в llm_request.contents (только новые, по ID)."""
+    def _process_tool_responses(self, contents: list[Content]) -> None:
+        """Обрабатывает function_response в contents (только новые, по ID)."""
         if not self.secret_editor:
             return
 
-        for content in llm_request.contents:
+        for content in contents:
             if not content.parts:
                 continue
-            for part in content.parts:
+            for idx, part in enumerate(content.parts):
                 resp = getattr(part, "function_response", None)
                 if resp is not None:
                     if not (resp_id := getattr(resp, "id", None)):
@@ -289,12 +295,22 @@ class ADKAgentCallbacks:
 
                     response = resp.response
                     if isinstance(response, dict):
-                        for key, value in response.items():
+                        new_response = dict(response)
+                        changed = False
+                        for key, value in new_response.items():
                             if isinstance(value, str):
                                 safe = self.secret_editor.redact(value)
                                 if len(safe) > self.tool_response_max_chars:
                                     safe = f"{safe[:self.tool_response_max_chars]}\n...[TRUNCATED: {len(value)} -> {self.tool_response_max_chars}]"
-                                response[key] = safe
+                                if safe != value:
+                                    new_response[key] = safe
+                                    changed = True
+                        
+                        if changed:
+                            # P0-7 FIX: Не мутируем объект на месте, а создаем копию
+                            new_resp = resp.model_copy(update={"response": new_response})
+                            new_part = part.model_copy(update={"function_response": new_resp})
+                            content.parts[idx] = new_part
 
     # ──────────── шаг 6: RAG и факты ────────────
 
@@ -339,19 +355,24 @@ class ADKAgentCallbacks:
 
         self._ledger_new_events(session, callback_context)
 
-        if callback_context.state.get(self.flag_key):
-            self._process_tool_responses(llm_request)
-            return
+        # P0-1 FIX: Определяем шаг, но больше не делаем ранний return
+        is_tool_step = callback_context.state.get(self.flag_key, False)
 
-        self._session_id = session.id
+        if not is_tool_step:
+            self._session_id = session.id
+            self._process_last_user_message(session, callback_context)
 
-        self._process_last_user_message(session, callback_context)
-
+        # Применяем окно к истории всегда (и на первом шаге, и на шаге с инструментами)
         selected = self._select_events(session)
         new_contents = self._build_contents(selected)
 
-        self._apply_memory_search(new_contents)
-        self._apply_tone_hint(new_contents, callback_context)
+        # Прогоняем ответы инструментов через DLP (безопасные копии)
+        self._process_tool_responses(new_contents)
+
+        # RAG, факты и тон применяем ТОЛЬКО на первом шаге (не на шаге с инструментами)
+        if not is_tool_step:
+            self._apply_memory_search(new_contents)
+            self._apply_tone_hint(new_contents, callback_context)
 
         window = self.window
         if window is not None:
@@ -361,8 +382,9 @@ class ADKAgentCallbacks:
             mode = "вся история"
             total_tokens = 0
         print(f"=== КОНТЕКСТ ({mode}; сообщений: {len(new_contents)}; ~{total_tokens} токенов) ===")
+        
+        # Перезаписываем контент, который ADK подготовил для модели
         llm_request.contents = new_contents
-
         callback_context.state[self.flag_key] = True
 
     def before_tool(self, tool, args, tool_context):

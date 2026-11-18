@@ -1,6 +1,7 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 
 class ColdStorage:
     def __init__(self, base_dir: str):
@@ -9,7 +10,7 @@ class ColdStorage:
     def log(self, session_id: str, role: str, text: str):
         entry = {
             "session_id": session_id,
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "role": role,
             "text": text,
         }

@@ -14,17 +14,13 @@ class FileTools:
 
     def run_shell_command(self, command: str) -> str:
         """Выполняет shell-команду с таймаутом и проверкой безопасности (Defense in Depth)."""
-        
+
         # 1. Проверка безопасности
-        decision = self.guard.check(
-            tool_name="run_shell_command", 
-            args={"command": command}, 
-            context={}
-        )
-        
+        decision = self.guard.check(tool_name="run_shell_command", args={"command": command}, context={})
+
         if decision == GuardDecision.DENY:
             return "🚫 Ошибка безопасности: Команда заблокирована (DENY)."
-        
+
         if decision == GuardDecision.REQUIRE_HITL:
             return (
                 "⚠️ Требуется подтверждение: Эта команда не в белом списке. "
@@ -85,9 +81,9 @@ class FileTools:
         """Проверяет, что путь не выходит за пределы base_dir."""
         if ".." in filename or filename.startswith("/"):
             return "❌ Ошибка безопасности: выход за пределы проекта запрещен."
-        
+
         target = (self.base_dir / filename).resolve()
         if not target.is_relative_to(self.base_dir):
             return "❌ Ошибка безопасности: выход за пределы проекта запрещен."
-        
+
         return target

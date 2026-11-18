@@ -23,8 +23,7 @@ def build_retry_config(
     """
     if backoff_factor != 2.0:
         logger.warning(
-            "backoff_factor=%s не поддерживается LiteLLM напрямую; "
-            "используется встроенная экспоненциальная задержка.",
+            "backoff_factor=%s не поддерживается LiteLLM напрямую; используется встроенная экспоненциальная задержка.",
             backoff_factor,
         )
 

@@ -16,7 +16,7 @@ def _get_bool_env(key: str, default: bool = True) -> bool:
 def build_llm_model(provider: str | None = None) -> LiteLlm:
     """
     Собирает и возвращает настроенный LiteLlm на основе переменных окружения.
-    
+
     Args:
         provider: Явное указание провайдера (yandex, selectel, selectel_router).
                   Если не указан, берется из AI_PROVIDER (по умолчанию yandex).
@@ -31,8 +31,11 @@ def build_llm_model(provider: str | None = None) -> LiteLlm:
             timeout_seconds=int(os.getenv("RETRY_TIMEOUT_SECONDS", "60")),
             backoff_factor=float(os.getenv("RETRY_BACKOFF_FACTOR", "2.0")),
         )
-        logger.info("🔁 Retry Logic включен: max_retries=%s, timeout=%ss",
-                    retry_kwargs.get('max_retries'), retry_kwargs.get('timeout'))
+        logger.info(
+            "🔁 Retry Logic включен: max_retries=%s, timeout=%ss",
+            retry_kwargs.get("max_retries"),
+            retry_kwargs.get("timeout"),
+        )
     else:
         logger.info("🚫 Retry Logic отключен (ENABLE_RETRY=false)")
 

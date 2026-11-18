@@ -1,5 +1,6 @@
 import re
 
+
 class TextSparsifier:
     def __init__(self):
         self.filler_words = [

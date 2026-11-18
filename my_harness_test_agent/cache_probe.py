@@ -23,7 +23,7 @@ import contextlib
 import json
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import requests
 
@@ -157,7 +157,7 @@ def probe_pair(
     log_fh.write(
         json.dumps(
             {"scenario": scenario, "provider": provider, "attempt": 1,
-             "ts": datetime.now(timezone.utc).isoformat(), **first},
+             "ts": datetime.now(UTC).isoformat(), **first},
             ensure_ascii=False,
         ) + "\n"
     )
@@ -169,7 +169,7 @@ def probe_pair(
     log_fh.write(
         json.dumps(
             {"scenario": scenario, "provider": provider, "attempt": 2,
-             "ts": datetime.now(timezone.utc).isoformat(), **second},
+             "ts": datetime.now(UTC).isoformat(), **second},
             ensure_ascii=False,
         ) + "\n"
     )

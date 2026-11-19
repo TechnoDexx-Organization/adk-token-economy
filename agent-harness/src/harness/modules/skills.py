@@ -25,18 +25,13 @@ def build_safe_skill_toolset(skills_dir_path: pathlib.Path) -> skill_toolset.Ski
                         # Читаем текст скрипта
                         content = script.read_text(encoding="utf-8")
 
-                        # Хитрость: имитируем вызов инструмента shell, 
+                        # Хитрость: имитируем вызов инструмента shell,
                         # чтобы твой ShellCommandGuard проверил этот скрипт!
-                        is_safe = guard.check(
-                            tool_name="run_shell_command", 
-                            args={"command": content}, 
-                            context={}
-                        )
+                        is_safe = guard.check(tool_name="run_shell_command", args={"command": content}, context={})
 
                         if not is_safe:
                             raise ValueError(
-                                f"Загрузка навыка '{skill_dir.name}' отменена: "
-                                f"опасный скрипт '{script.name}'."
+                                f"Загрузка навыка '{skill_dir.name}' отменена: опасный скрипт '{script.name}'."
                             )
                     except Exception as e:
                         # Если не смогли прочитать или сработал guard

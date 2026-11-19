@@ -63,9 +63,13 @@ def get_static_instruction(context) -> str:
                 print(f"📄 Загружена инструкция из файла: {prompt_path}")
                 return prompt_path.read_text(encoding="utf-8")
             except Exception as e:  # noqa: BLE001
-                print(f"⚠️ Ошибка чтения файла промпта: {e}. Используем дефолтную инструкцию.")
+                print(
+                    f"⚠️ Ошибка чтения файла промпта: {e}. Используем дефолтную инструкцию."
+                )
         else:
-            print(f"⚠️ Файл промпта не найден: {prompt_path}. Используем дефолтную инструкцию.")
+            print(
+                f"⚠️ Файл промпта не найден: {prompt_path}. Используем дефолтную инструкцию."
+            )
 
     hitl_instruction = ""
     if get_bool_env("ENABLE_HITL", True):

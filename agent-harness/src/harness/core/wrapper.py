@@ -34,9 +34,9 @@ class AgentWrapper:
         """Универсальный метод вызова любого агента."""
         if context is None:
             context = {}
-        
+
         safe_input = self.process_input(text, context)
-        
+
         # Предполагаем, что у агента есть метод invoke или generate
         if hasattr(self.agent, "invoke"):
             raw_output = self.agent.invoke(safe_input)
@@ -46,5 +46,5 @@ class AgentWrapper:
             raw_output = self.agent(safe_input)
         else:
             raise ValueError("Агент должен иметь метод invoke/generate или быть вызываемой функцией.")
-        
+
         return self.process_output(raw_output, context)

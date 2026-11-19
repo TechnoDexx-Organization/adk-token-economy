@@ -17,13 +17,12 @@ cache_probe.py — замер кэширования промпта у Yandex AI
     python cache_probe.py --only yandex        # только Яндекс (Selectel на 402)
 """
 
-
 import argparse
 import contextlib
 import json
 import os
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 
 import requests
 
@@ -88,7 +87,10 @@ def send_request(provider: str, prompt: str, extra_headers: dict | None = None) 
 
     if provider == "yandex":
         if not (yandex_key and folder_id):
-            return {"status": "SKIP", "error": "YANDEX_API_KEY / YANDEX_FOLDER_ID не заданы"}
+            return {
+                "status": "SKIP",
+                "error": "YANDEX_API_KEY / YANDEX_FOLDER_ID не заданы",
+            }
         url = f"{yandex_base}/chat/completions"
         headers = {
             "Authorization": f"Api-Key {yandex_key}",
@@ -156,10 +158,16 @@ def probe_pair(
     first = send_request(provider, prompt, extra_headers)
     log_fh.write(
         json.dumps(
-            {"scenario": scenario, "provider": provider, "attempt": 1,
-             "ts": datetime.now(UTC).isoformat(), **first},
+            {
+                "scenario": scenario,
+                "provider": provider,
+                "attempt": 1,
+                "ts": datetime.now(UTC).isoformat(),
+                **first,
+            },
             ensure_ascii=False,
-        ) + "\n"
+        )
+        + "\n"
     )
     log_fh.flush()
 
@@ -168,10 +176,16 @@ def probe_pair(
     second = send_request(provider, prompt, extra_headers)
     log_fh.write(
         json.dumps(
-            {"scenario": scenario, "provider": provider, "attempt": 2,
-             "ts": datetime.now(UTC).isoformat(), **second},
+            {
+                "scenario": scenario,
+                "provider": provider,
+                "attempt": 2,
+                "ts": datetime.now(UTC).isoformat(),
+                **second,
+            },
             ensure_ascii=False,
-        ) + "\n"
+        )
+        + "\n"
     )
     log_fh.flush()
     return first, second
@@ -180,11 +194,10 @@ def probe_pair(
 def fmt(record: dict) -> str:
     if record.get("status") != "OK":
         detail = record.get("error") or record.get("error_body", "")
-        return f"{record.get('status')} ({record.get('http_status', '-')}) {detail[:60]}"
-    return (
-        f"prompt={record.get('prompt_tokens')}, "
-        f"cached={record.get('cached_tokens')}"
-    )
+        return (
+            f"{record.get('status')} ({record.get('http_status', '-')}) {detail[:60]}"
+        )
+    return f"prompt={record.get('prompt_tokens')}, cached={record.get('cached_tokens')}"
 
 
 def cached_of(record: dict) -> int:
@@ -211,20 +224,31 @@ def run_scenario(
 
 def main() -> None:  # sourcery skip: low-code-quality
     parser = argparse.ArgumentParser(description="Замер кэширования промпта")
-    parser.add_argument("--pause", type=float, default=1.0,
-                        help="пауза между запросами пары, сек (для TTL-теста)")
-    parser.add_argument("--repeat", type=int, default=REF_REPEAT,
-                        help=f"длина префикса; {REF_REPEAT} ≈ {REF_TOKENS} токенов")
+    parser.add_argument(
+        "--pause",
+        type=float,
+        default=1.0,
+        help="пауза между запросами пары, сек (для TTL-теста)",
+    )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=REF_REPEAT,
+        help=f"длина префикса; {REF_REPEAT} ≈ {REF_TOKENS} токенов",
+    )
     parser.add_argument("--only", choices=["yandex", "selectel"], default=None)
     parser.add_argument("--out", default=None, help="путь к JSONL-логу")
-    parser.add_argument("--fresh", action="store_true",
-                        help="добавить случайную соль в начало промпта (чистый TTL-тест)")
+    parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="добавить случайную соль в начало промпта (чистый TTL-тест)",
+    )
     args = parser.parse_args()
 
     prompt = build_prompt(args.repeat, fresh=args.fresh)
     out_path = args.out or os.path.join(
         BASE_DIR,
-        f"cache_probe_{datetime.now():%Y%m%d_%H%M%S}.jsonl",  # noqa: DTZ005
+        f"cache_probe_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.jsonl",
     )
 
     print("=== ТЕСТ КЭШИРОВАНИЯ ===")
@@ -237,19 +261,33 @@ def main() -> None:  # sourcery skip: low-code-quality
     with open(out_path, "a", encoding="utf-8") as log_fh:
         if args.only in (None, "yandex"):
             results["yandex_clean"] = run_scenario(
-                "1. Yandex, чистый запрос", "yandex_clean",
-                "yandex", prompt, args.pause, None, log_fh,
+                "1. Yandex, чистый запрос",
+                "yandex_clean",
+                "yandex",
+                prompt,
+                args.pause,
+                None,
+                log_fh,
             )
             results["yandex_header"] = run_scenario(
-                "2. Yandex + OpenAI-Project (как подставляет LiteLLM)", "yandex_header",
-                "yandex", prompt, args.pause,
-                {"OpenAI-Project": os.getenv("YANDEX_FOLDER_ID", "test")}, log_fh,
+                "2. Yandex + OpenAI-Project (как подставляет LiteLLM)",
+                "yandex_header",
+                "yandex",
+                prompt,
+                args.pause,
+                {"OpenAI-Project": os.getenv("YANDEX_FOLDER_ID", "test")},
+                log_fh,
             )
 
         if args.only in (None, "selectel"):
             results["selectel_clean"] = run_scenario(
-                "3. Selectel, чистый запрос", "selectel_clean",
-                "selectel", prompt, args.pause, None, log_fh,
+                "3. Selectel, чистый запрос",
+                "selectel_clean",
+                "selectel",
+                prompt,
+                args.pause,
+                None,
+                log_fh,
             )
 
     print("=== ВЫВОДЫ ===")
@@ -260,34 +298,46 @@ def main() -> None:  # sourcery skip: low-code-quality
         if clean_2.get("status") != "OK":
             print("⚠️ Яндекс: запрос не выполнен, выводы делать нельзя.")
         elif cached_of(clean_2) > 0:
-            print(f"✅ Яндекс кэширует: {cached_of(clean_2)} из "
-                  f"{clean_2.get('prompt_tokens')} токенов.")
+            print(
+                f"✅ Яндекс кэширует: {cached_of(clean_2)} из "
+                f"{clean_2.get('prompt_tokens')} токенов."
+            )
         else:
             print("❌ Яндекс: на повторном запросе cached=0.")
 
         if cached_of(clean_2) > 0 and cached_of(head_1) > 0:
-            print("✅ Хедер OpenAI-Project кэш НЕ ломает "
-                  "(первый запрос с хедером попал в уже прогретый кэш).")
+            print(
+                "✅ Хедер OpenAI-Project кэш НЕ ломает "
+                "(первый запрос с хедером попал в уже прогретый кэш)."
+            )
         elif cached_of(clean_2) > 0 and cached_of(head_1) == 0:
             print("⚠️ С хедером кэш не сработал — гипотеза про LiteLLM-хедер жива.")
 
         if cached_of(clean_1) > 0:
-            print("⚠️ Первый запрос уже кэшированный — кэш пережил паузу/прошлые прогоны.")
+            print(
+                "⚠️ Первый запрос уже кэшированный — кэш пережил паузу/прошлые прогоны."
+            )
 
     if args.only in (None, "selectel"):
         _sel_1, sel_2 = results["selectel_clean"]
         if sel_2.get("status") != "OK":
-            print(f"❌ Selectel недоступен: {sel_2.get('status')} "
-                  f"{sel_2.get('error_body', '')[:60]}")
+            print(
+                f"❌ Selectel недоступен: {sel_2.get('status')} "
+                f"{sel_2.get('error_body', '')[:60]}"
+            )
         elif cached_of(sel_2) > 0:
             print("✅ Selectel кэширует.")
         else:
             print("❌ Selectel: на повторном запросе cached=0.")
 
     if args.pause > 10:
-        print("ℹ️ Пауза > 10 сек — это TTL-тест: смотри, остался ли cached на 2-м запросе.")
+        print(
+            "ℹ️ Пауза > 10 сек — это TTL-тест: смотри, остался ли cached на 2-м запросе."
+        )
     if estimate_tokens(args.repeat) < 1024:
-        print("ℹ️ Префикс < 1024 токенов — это тест порога: ждём cached=0 при коротком префиксе.")
+        print(
+            "ℹ️ Префикс < 1024 токенов — это тест порога: ждём cached=0 при коротком префиксе."
+        )
 
 
 if __name__ == "__main__":

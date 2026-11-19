@@ -24,8 +24,7 @@ load_dotenv()
 print("⏳ Загрузка модели эмоционального анализа...")
 try:
     emotion_pipeline = pipeline(
-        "text-classification",
-        model="Aniemore/rubert-tiny2-russian-emotion-detection"
+        "text-classification", model="Aniemore/rubert-tiny2-russian-emotion-detection"
     )
     print("✅ Модель эмоционального анализа загружена")
 except Exception as e:  # noqa: BLE001
@@ -44,7 +43,7 @@ def get_dynamic_instruction(context) -> str:
     """
     # Достаём эмоцию, которую сохранил before_model_callback
     emotion = context.state.get("current_emotion", "neutral")
-    
+
     # Базовые правила (экономия токенов)
     base_rules = (
         "You are an echo agent. Forward the user's messages. "
@@ -55,15 +54,24 @@ def get_dynamic_instruction(context) -> str:
         "Minimize the number of tokens in your responses. "
         "Keep your thoughts short. Do not over-explain. "
     )
-    
+
     # Добавляем эмоциональный окрас
     if emotion in ["sadness", "fear"]:
-        return base_rules + " TONE: The user is feeling sad or fearful. Be gentle, supportive, and brief. Acknowledge their state softly."
+        return (
+            base_rules
+            + " TONE: The user is feeling sad or fearful. Be gentle, supportive, and brief. Acknowledge their state softly."
+        )
     elif emotion in ["anger", "disgust"]:
-        return base_rules + " TONE: The user is irritated or angry. Be calm, objective, and concise. Do not mirror their aggression."
+        return (
+            base_rules
+            + " TONE: The user is irritated or angry. Be calm, objective, and concise. Do not mirror their aggression."
+        )
     elif emotion in ["happiness", "enthusiasm"]:
-        return base_rules + " TONE: The user is in a good mood. You can be slightly more upbeat, but remain efficient."
-    
+        return (
+            base_rules
+            + " TONE: The user is in a good mood. You can be slightly more upbeat, but remain efficient."
+        )
+
     # Нейтральный или неизвестный
     return base_rules + " TONE: Neutral. Be direct and helpful."
 
@@ -82,9 +90,16 @@ def sparsify_text(text: str) -> str:
     """
     # 1. Убираем частые «вводные» слова и связки
     filler_words = [
-        r"\bкороче\b", r"\bв общем\b", r"\bкак бы\b", r"\bтипа\b",
-        r"\bна самом деле\b", r"\bв принципе\b", r"\bпо сути\b",
-        r"\bсобственно\b", r"\bпросто\b", r"\bзначит\b"
+        r"\bкороче\b",
+        r"\bв общем\b",
+        r"\bкак бы\b",
+        r"\bтипа\b",
+        r"\bна самом деле\b",
+        r"\bв принципе\b",
+        r"\bпо сути\b",
+        r"\bсобственно\b",
+        r"\bпросто\b",
+        r"\bзначит\b",
     ]
     for word in filler_words:
         text = re.sub(word, "", text, flags=re.IGNORECASE)
@@ -98,7 +113,7 @@ def sparsify_text(text: str) -> str:
 
     # 3. Убираем лишние пробелы
     text = re.sub(r"\s+", " ", text).strip()
-    
+
     # 4. Делаем первую букву заглавной
     if text:
         text = text[0].upper() + text[1:]
@@ -106,7 +121,9 @@ def sparsify_text(text: str) -> str:
     return text
 
 
-def prepare_text(callback_context: CallbackContext, text: str, role: str = "user") -> str:
+def prepare_text(
+    callback_context: CallbackContext, text: str, role: str = "user"
+) -> str:
     """
     Подготавливает текст перед отправкой в модель.
     1. Анализирует эмоцию и сохраняет её в state (для динамической инструкции).
@@ -120,18 +137,18 @@ def prepare_text(callback_context: CallbackContext, text: str, role: str = "user
     if emotion_pipeline:
         try:
             result = emotion_pipeline(text, truncation=True, max_length=512)[0]
-            emotion_label = result['label']
-            score = result['score']
-            
+            emotion_label = result["label"]
+            score = result["score"]
+
             # Сохраняем эмоцию в состояние сессии для get_dynamic_instruction
             callback_context.state["current_emotion"] = emotion_label
             print(f"  (Эмоция определена: {emotion_label} {score:.2f})")
         except Exception as e:  # noqa: BLE001
             print(f"⚠️ Ошибка при анализе эмоции: {e}")
-    
+
     # 2. Сушим текст (эмоцию убираем, так как она уже в state)
     dry_text = sparsify_text(text)
-    
+
     return dry_text
 
 
@@ -304,8 +321,8 @@ root_agent = Agent(
         api_key=os.getenv("YANDEX_API_KEY"),
         extra_headers={"OpenAI-Project": os.getenv("YANDEX_FOLDER_ID")},
     ),
-    name='echo_agent',
-    description='Echo agent.',
+    name="echo_agent",
+    description="Echo agent.",
     # ИСПОЛЬЗУЕМ ДИНАМИЧЕСКУЮ ИНСТРУКЦИЮ ВМЕСТО СТРОКИ
     instruction=get_dynamic_instruction,
     tools=[get_echo],

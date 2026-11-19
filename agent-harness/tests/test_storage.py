@@ -1,4 +1,5 @@
 """Ледник: полный журнал и точная обратимость через манифест."""
+
 import difflib
 import json
 
@@ -26,11 +27,11 @@ def test_manifest_restores_original_exactly(tmp_path):
     storage = ColdStorage(str(tmp_path))
     original = "В общем, я устал"
     processed = "я устал"
-    
+
     # Генерируем opcodes через difflib
     matcher = difflib.SequenceMatcher(None, original, processed)
     opcodes = matcher.get_opcodes()
-    
+
     storage.log_manifest(
         "s1",
         event_id="e1",
@@ -43,7 +44,7 @@ def test_manifest_restores_original_exactly(tmp_path):
     )
 
     manifest = read_entries(tmp_path / "cold_storage.jsonl")[0]
-    
+
     # Восстанавливаем через новый метод
     restored = ColdStorage.restore(manifest)
 

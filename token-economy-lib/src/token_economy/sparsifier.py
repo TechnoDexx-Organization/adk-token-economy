@@ -4,9 +4,16 @@ import re
 class TextSparsifier:
     def __init__(self):
         self.filler_words = [
-            r"\bкороче\b", r"\bв общем\b", r"\bкак бы\b", r"\bтипа\b",
-            r"\bна самом деле\b", r"\bв принципе\b", r"\bпо сути\b",
-            r"\bсобственно\b", r"\bпросто\b", r"\bзначит\b",
+            r"\bкороче\b",
+            r"\bв общем\b",
+            r"\bкак бы\b",
+            r"\bтипа\b",
+            r"\bна самом деле\b",
+            r"\bв принципе\b",
+            r"\bпо сути\b",
+            r"\bсобственно\b",
+            r"\bпросто\b",
+            r"\bзначит\b",
         ]
 
     def apply(self, text: str) -> str:

@@ -3,6 +3,7 @@ class EmotionAnalyzer:
         print("⏳ Загрузка модели эмоционального анализа...")
         try:
             from transformers import pipeline
+
             self.pipeline = pipeline(
                 "text-classification",
                 model="Aniemore/rubert-tiny2-russian-emotion-detection",

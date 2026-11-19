@@ -53,7 +53,7 @@ class AgentCallbacks:
                 if self.analyzer:
                     emotion = self.analyzer.analyze(text)
                     callback_context.state["current_emotion"] = emotion
-                
+
                 # Сушка текста (опционально)
                 if self.sparsifier:
                     text = self.sparsifier.apply(text)
@@ -68,7 +68,7 @@ class AgentCallbacks:
 
         # Собираем Content
         new_contents = [
-            Content(role=role, parts=[Part(text=text)]) 
+            Content(role=role, parts=[Part(text=text)])
             for role, text in windowed_events
         ]
 
@@ -76,7 +76,12 @@ class AgentCallbacks:
         if self.analyzer and self.tone_hints:
             emotion = callback_context.state.get("current_emotion", "neutral")
             tone_hint = self.tone_hints.get(emotion)
-            if tone_hint and new_contents and new_contents[-1].role == "user" and new_contents[-1].parts:
+            if (
+                tone_hint
+                and new_contents
+                and new_contents[-1].role == "user"
+                and new_contents[-1].parts
+            ):
                 part = new_contents[-1].parts[0]
                 prefix = f"{part.text}\n\n" if part.text else ""
                 part.text = f"{prefix}[Tone hint: {tone_hint}]"
@@ -100,13 +105,17 @@ class AgentCallbacks:
             part.function_call is not None for part in llm_response.content.parts
         )
 
-        if reply_text := "".join(part.text for part in llm_response.content.parts if part.text):
+        if reply_text := "".join(
+            part.text for part in llm_response.content.parts if part.text
+        ):
             print("=== ОТВЕТ МОДЕЛИ ===")
             print(reply_text)
             print("=" * 20)
 
         if llm_response.usage_metadata:
-            cached = getattr(llm_response.usage_metadata, "cached_content_token_count", 0)
+            cached = getattr(
+                llm_response.usage_metadata, "cached_content_token_count", 0
+            )
             prompt = getattr(llm_response.usage_metadata, "prompt_token_count", 0)
             print(f"📊 Метрики: prompt={prompt}, cached={cached}")
 
@@ -114,14 +123,16 @@ class AgentCallbacks:
             callback_context.state[self.flag_key] = False
             print("=== [after_model] финал, флаг снят ===")
 
-    def _handle_empty_response(self, callback_context: CallbackContext, llm_response: LlmResponse):
+    def _handle_empty_response(
+        self, callback_context: CallbackContext, llm_response: LlmResponse
+    ):
         callback_context.state[self.flag_key] = False
         error_count = callback_context.state.get("error_count", 0) + 1
         callback_context.state["error_count"] = error_count
 
         reason = (
-            f"Сбой API: {llm_response.error_code}" 
-            if llm_response.error_code 
+            f"Сбой API: {llm_response.error_code}"
+            if llm_response.error_code
             else "Модель вернула пустоту"
         )
         print(f"⚠️ [after_model] {reason}. Сбой №{error_count}.")
@@ -130,7 +141,9 @@ class AgentCallbacks:
             for event in reversed(session.events):
                 if event.author == "user":
                     if text := self._event_to_text(event):
-                        llm_response.content = Content(role="model", parts=[Part(text=text)])
+                        llm_response.content = Content(
+                            role="model", parts=[Part(text=text)]
+                        )
                         llm_response.error_code = None
                         llm_response.error_message = None
                     break

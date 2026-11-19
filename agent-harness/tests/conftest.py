@@ -1,4 +1,5 @@
 """Общие помощники для тестов: события ADK без сети и без модели."""
+
 from google.adk.events import Event
 from google.genai.types import Content, Part
 

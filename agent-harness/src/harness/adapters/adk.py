@@ -50,7 +50,7 @@ class ADKAgentCallbacks:
         self.hitl_tools = {"run_shell_command", "write_file"}
         self.tool_response_max_chars = 10_000
         self._processed_tool_ids: set[str] = set()
-        
+
         self._sparse_cache: dict[str, str] = {}
         self._emotion_cache: dict[str, str] = {}
         self._final_cache: dict[str, str] = {}
@@ -117,16 +117,22 @@ class ADKAgentCallbacks:
             if not text:
                 continue
             self.storage.log(
-                session.id, self._role_of(event), text,
+                session.id,
+                self._role_of(event),
+                text,
                 invocation_id=getattr(event, "invocation_id", "") or "",
-                event_id=self._event_key(event), kind=kind,
+                event_id=self._event_key(event),
+                kind=kind,
             )
         callback_context.state[self.ledger_key] = len(events)
 
     def _process_last_user_message(self, session, callback_context: CallbackContext) -> str | None:
         last_user_event = next(
-            (event for event in reversed(session.events or [])
-             if getattr(event, "author", "") == "user" and self._event_to_text(event)),
+            (
+                event
+                for event in reversed(session.events or [])
+                if getattr(event, "author", "") == "user" and self._event_to_text(event)
+            ),
             None,
         )
         if last_user_event is None:
@@ -223,14 +229,18 @@ class ADKAgentCallbacks:
                 continue
             parts: list[Part] = []
             final_text = self._final_text(session_id, event)
-            safe_text = self.secret_editor.redact(
-                final_text, 
-                session_id=session_id, 
-                event_id=self._event_key(event), 
-                invocation_id=getattr(event, "invocation_id", ""), 
-                role=self._role_of(event)
-            ) if self.secret_editor else final_text
-            
+            safe_text = (
+                self.secret_editor.redact(
+                    final_text,
+                    session_id=session_id,
+                    event_id=self._event_key(event),
+                    invocation_id=getattr(event, "invocation_id", ""),
+                    role=self._role_of(event),
+                )
+                if self.secret_editor
+                else final_text
+            )
+
             is_first_text = True
             for part in content.parts:
                 if part.text:
@@ -265,7 +275,9 @@ class ADKAgentCallbacks:
                 resp = getattr(part, "function_response", None)
                 if resp is not None:
                     if not (resp_id := getattr(resp, "id", None)):
-                        raw = f"{resp.name}|{json.dumps(resp.response, sort_keys=True, ensure_ascii=False, default=str)}"
+                        raw = (
+                            f"{resp.name}|{json.dumps(resp.response, sort_keys=True, ensure_ascii=False, default=str)}"
+                        )
                         resp_id = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
                     cache_key = self._cache_key(session_id, resp_id)
                     if cache_key in self._processed_tool_ids:
@@ -280,13 +292,10 @@ class ADKAgentCallbacks:
                         for key, value in new_response.items():
                             if isinstance(value, str):
                                 safe = self.secret_editor.redact(
-                                    value, 
-                                    session_id=session_id, 
-                                    event_id="tool_response", 
-                                    role="tool"
+                                    value, session_id=session_id, event_id="tool_response", role="tool"
                                 )
                                 if len(safe) > self.tool_response_max_chars:
-                                    safe = f"{safe[:self.tool_response_max_chars]}\n...[TRUNCATED: {len(value)} -> {self.tool_response_max_chars}]"
+                                    safe = f"{safe[: self.tool_response_max_chars]}\n...[TRUNCATED: {len(value)} -> {self.tool_response_max_chars}]"
                                 if safe != value:
                                     new_response[key] = safe
                                     changed = True
@@ -313,12 +322,13 @@ class ADKAgentCallbacks:
                         mem_text += f"\n\n[Known facts about user]:\n{joined_facts}"
                         print(f"🧠 Найдено {len(facts)} фактов о пользователе.")
                 if mem_text:
-                    safe_mem_text = self.secret_editor.redact(
-                        mem_text, 
-                        session_id=session_id, 
-                        event_id="memory_context", 
-                        role="system"
-                    ) if self.secret_editor else mem_text
+                    safe_mem_text = (
+                        self.secret_editor.redact(
+                            mem_text, session_id=session_id, event_id="memory_context", role="system"
+                        )
+                        if self.secret_editor
+                        else mem_text
+                    )
                     new_part = Part(text=query + safe_mem_text)
                     new_parts = [new_part] + new_contents[-1].parts[1:]
                     new_contents[-1] = Content(role="user", parts=new_parts)
@@ -381,7 +391,7 @@ class ADKAgentCallbacks:
                         f"Если он согласен, вызовите инструмент `approve_action` с параметрами: "
                         f"tool_name='{tool.name}', args_hash='{args_hash}'. "
                         f"После этого вы сможете снова вызвать '{tool.name}'."
-                    )
+                    ),
                 }
         return None
 
@@ -394,9 +404,7 @@ class ADKAgentCallbacks:
         if is_empty:
             self._handle_empty_response(callback_context, llm_response)
             return
-        has_function_call = any(
-            part.function_call is not None for part in llm_response.content.parts
-        )
+        has_function_call = any(part.function_call is not None for part in llm_response.content.parts)
         if reply_text := "".join(part.text for part in llm_response.content.parts if part.text):
             print("=== ОТВЕТ МОДЕЛИ ===")
             print(reply_text)
@@ -413,11 +421,7 @@ class ADKAgentCallbacks:
         callback_context.state[self.flag_key] = False
         error_count = callback_context.state.get("error_count", 0) + 1
         callback_context.state["error_count"] = error_count
-        reason = (
-            f"Сбой API: {llm_response.error_code}"
-            if llm_response.error_code
-            else "Модель вернула пустоту"
-        )
+        reason = f"Сбой API: {llm_response.error_code}" if llm_response.error_code else "Модель вернула пустоту"
         print(f"⚠️ [after_model] {reason}. Сбой №{error_count}.")
         if session := callback_context.session:
             for event in reversed(session.events):

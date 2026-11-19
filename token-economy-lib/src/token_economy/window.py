@@ -6,4 +6,4 @@ class SlidingWindow:
         """Обрезает историю до последних N событий."""
         if self.max_events <= 0:
             return events
-        return events[-self.max_events:]
+        return events[-self.max_events :]

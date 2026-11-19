@@ -21,19 +21,15 @@ class SecretEditor:
         self.secret_patterns = [
             re.compile(r"sk-[a-zA-Z0-9\-_]{20,}"),  # OpenAI
             re.compile(r"eyJ[a-zA-Z0-9_\-]+\.[a-zA-Z0-9_\-]+"),  # JWT
-            re.compile(
-                r"(?i)(?:api[_-]?key|password|token)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-]{10,})['\"]?"
-            ),
+            re.compile(r"(?i)(?:api[_-]?key|password|token)\s*[:=]\s*['\"]?([a-zA-Z0-9_\-]{10,})['\"]?"),
         ]
         # Уровень 1.5: Белый список (что нельзя скрывать)
         self.allow_patterns = [
-            re.compile(
-                r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-            ),
+            re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"),
         ]
         # Механизм для динамического наполнения
         self.allowed_tokens: set[str] = set()
-        
+
         # Если передан путь — загружаем из файла
         if allowlist_path:
             self.load_allowlist_from_file(allowlist_path)
@@ -53,7 +49,7 @@ class SecretEditor:
         if not p.exists():
             logger.warning(f"⚠️ SecretEditor: файл allowlist не найден: {path}")
             return
-            
+
         # Используем utf-8-sig, чтобы убрать невидимый BOM в начале файла
         with p.open("r", encoding="utf-8-sig") as f:
             for line in f:
@@ -61,7 +57,7 @@ class SecretEditor:
                 # Игнорируем пустые строки и комментарии
                 if token and not token.startswith("#"):
                     self.add_allowed_token(token)
-        
+
         logger.info(f"📖 SecretEditor: загружено {len(self.allowed_tokens)} уникальных токенов из {path}")
 
     def _calculate_entropy(self, s: str) -> float:
@@ -69,9 +65,7 @@ class SecretEditor:
             return 0.0
         counts = Counter(s)
         length = len(s)
-        return -sum(
-            (count / length) * math.log2(count / length) for count in counts.values()
-        )
+        return -sum((count / length) * math.log2(count / length) for count in counts.values())
 
     def _is_secret_word(self, word: str) -> bool:
         # Очищаем слово от знаков препинания (точки, запятые, кавычки)
@@ -104,13 +98,7 @@ class SecretEditor:
         return False
 
     def redact(
-        self, 
-        text: str, 
-        *, 
-        session_id: str = "", 
-        event_id: str = "", 
-        invocation_id: str = "", 
-        role: str = "user"
+        self, text: str, *, session_id: str = "", event_id: str = "", invocation_id: str = "", role: str = "user"
     ) -> str:
         if not text:
             return text
@@ -124,9 +112,7 @@ class SecretEditor:
                 continue
 
             if self._is_secret_word(word):
-                logger.warning(
-                    f"🛡️ SecretEditor: скрыт потенциальный секрет (длина {len(word)})"
-                )
+                logger.warning(f"🛡️ SecretEditor: скрыт потенциальный секрет (длина {len(word)})")
                 if self.storage:
                     self.storage.log_redaction(
                         session_id,

@@ -75,15 +75,11 @@ class SlidingWindow(PreProcessor):
 
             current = turns[-1]
             current_invocation = getattr(current[0], "invocation_id", "") or ""
-            current_has_user = any(
-                (getattr(item, "author", "") or "") == "user" for item in current
+            current_has_user = any((getattr(item, "author", "") or "") == "user" for item in current)
+            changed_invocation = (
+                bool(invocation_id) and bool(current_invocation) and (invocation_id != current_invocation)
             )
-            changed_invocation = bool(invocation_id) and bool(current_invocation) and (
-                invocation_id != current_invocation
-            )
-            repeated_user = author == "user" and (
-                current_has_user or not (invocation_id or current_invocation)
-            )
+            repeated_user = author == "user" and (current_has_user or not (invocation_id or current_invocation))
 
             if changed_invocation or repeated_user:
                 turns.append([event])
@@ -103,10 +99,10 @@ class SlidingWindow(PreProcessor):
         selected = list(events)
 
         if self.max_messages is not None and self.max_messages > 0:
-            selected = selected[-self.max_messages:]
+            selected = selected[-self.max_messages :]
         elif self.max_turns is not None and self.max_turns > 0:
             turns = self.group_by_turns(selected)
-            selected = [event for turn in turns[-self.max_turns:] for event in turn]
+            selected = [event for turn in turns[-self.max_turns :] for event in turn]
 
         if self.max_tokens is not None and self.max_tokens > 0 and selected:
             selected = self._trim_to_budget(selected, size)

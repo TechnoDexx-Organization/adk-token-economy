@@ -1,4 +1,5 @@
 """Сушка: убирает воду, не трогает смысл, обратима через манифест."""
+
 from harness.modules.sparsifier import TextSparsifier
 
 

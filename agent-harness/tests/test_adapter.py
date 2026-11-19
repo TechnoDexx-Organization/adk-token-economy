@@ -1,4 +1,5 @@
 """Адаптер ADK: четыре независимых шага и обратимость."""
+
 import json
 
 from conftest import make_event
@@ -66,9 +67,7 @@ def test_analyzer_and_sparsifier_run_once_per_new_message(tmp_path):
 
     analyzer = CountingAnalyzer()
     sparsifier = CountingSparsifier()
-    callbacks, context = build(
-        events, storage=ColdStorage(str(tmp_path)), analyzer=analyzer, sparsifier=sparsifier
-    )
+    callbacks, context = build(events, storage=ColdStorage(str(tmp_path)), analyzer=analyzer, sparsifier=sparsifier)
 
     callbacks.before_model(context, FakeRequest())
 
@@ -108,7 +107,9 @@ def test_window_applies_to_contents_and_sparsification_is_reversible(tmp_path):
 
     storage = ColdStorage(str(tmp_path))
     callbacks, context = build(
-        events, storage=storage, window=SlidingWindow(max_messages=4),
+        events,
+        storage=storage,
+        window=SlidingWindow(max_messages=4),
         sparsifier=CountingSparsifier(),
     )
     request = FakeRequest()
@@ -119,7 +120,7 @@ def test_window_applies_to_contents_and_sparsification_is_reversible(tmp_path):
 
     manifests = [entry for entry in read_ledger(tmp_path) if entry["kind"] == "manifest"]
     manifest = manifests[-1]
-    
+
     # P0-3: Теперь используем встроенный восстановитель по opcodes
     restored = ColdStorage.restore(manifest)
     assert restored == manifest["original"]

@@ -10,6 +10,7 @@ from google.genai.types import Content, Part
 from ..core.interfaces import GuardDecision
 from ..modules.analyzer import EmotionAnalyzer
 from ..modules.canary import CanaryGuard
+from ..modules.cost import CostLimitExceeded, CostTracker
 from ..modules.memory import FactMemoryProvider, MemoryProvider
 from ..modules.secret_editor import SecretEditor
 from ..modules.sparsifier import TextSparsifier
@@ -37,6 +38,7 @@ class ADKAgentCallbacks:
         memory_provider: MemoryProvider | None = None,
         fact_memory_provider: FactMemoryProvider | None = None,
         canary_guard: CanaryGuard | None = None,
+        cost_tracker: CostTracker | None = None,
     ):
         self.analyzer = analyzer
         self.sparsifier = sparsifier
@@ -51,6 +53,7 @@ class ADKAgentCallbacks:
         self.fact_memory_provider = fact_memory_provider
         # Канареечный токен: None => защита выключена (маркер в промпт не вставляется)
         self.canary_guard = canary_guard
+        self.cost_tracker = cost_tracker or CostTracker()
         self.flag_key = "_processed"
         self.ledger_key = "_ledger_upto"
 
@@ -379,6 +382,7 @@ class ADKAgentCallbacks:
         )
         llm_request.contents = new_contents
         callback_context.state[self.flag_key] = True
+        callback_context.state["model_name"] = llm_request.model
 
     def before_tool(self, tool, args, tool_context):
         force_hitl = False
@@ -438,12 +442,31 @@ class ADKAgentCallbacks:
         if llm_response.usage_metadata:
             cached = getattr(llm_response.usage_metadata, "cached_content_token_count", 0)
             prompt = getattr(llm_response.usage_metadata, "prompt_token_count", 0)
+            total = getattr(llm_response.usage_metadata, "total_token_count", 0)
             logger.info(
                 "Метрики: prompt=%s, cached=%s",
                 prompt,
                 cached,
                 extra={"kind": "usage_metrics", "prompt_tokens": prompt, "cached_tokens": cached},
             )
+            try:
+                model_name = callback_context.state.get("model_name", "unknown")
+                self.cost_tracker.track(
+                    model_name=model_name,
+                    prompt_tokens=prompt,
+                    cached_tokens=cached,
+                    total_tokens=total,
+                )
+            except CostLimitExceeded:
+                # Бюджет исчерпан: помечаем состояние и останавливаем исполнение.
+                callback_context.state["cost_limit_exceeded"] = True
+                llm_response.content = Content(
+                    role="model",
+                    parts=[Part(text=f"⛔ {CostLimitExceeded(self.cost_tracker.limit)}")],
+                )
+                llm_response.error_code = "cost_limit_exceeded"
+                llm_response.error_message = str(CostLimitExceeded(self.cost_tracker.limit))
+                return
         if not has_function_call:
             callback_context.state[self.flag_key] = False
             logger.debug("after_model: финал, флаг снят")

@@ -38,6 +38,9 @@ _EXPORTS: dict[str, str] = {
     "ColdStorage": ".modules.storage",
     "TokenCounter": ".modules.tokens",
     "SlidingWindow": ".modules.window",
+    "configure_logging": ".modules.telemetry",
+    "CostTracker": ".modules.cost",
+    "CostLimitExceeded": ".modules.cost",
 }
 
 __all__ = list(_EXPORTS)

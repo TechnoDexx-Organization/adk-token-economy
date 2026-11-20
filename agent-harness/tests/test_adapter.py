@@ -44,6 +44,7 @@ class FakeContext:
 class FakeRequest:
     def __init__(self):
         self.contents: list = []
+        self.model: str = "gemini-2.5-flash"
 
 
 def build(events, window=None, storage=None, analyzer=None, sparsifier=None):

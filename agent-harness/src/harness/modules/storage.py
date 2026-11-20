@@ -1,7 +1,10 @@
 import hashlib
 import json
+import logging
 import os
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 class ColdStorage:
@@ -118,4 +121,4 @@ class ColdStorage:
             with open(self.file_path, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         except OSError as e:
-            print(f"⚠️ Ошибка записи в ледник: {e}")
+            logger.error("Ошибка записи в ледник: %s", e)

@@ -19,8 +19,10 @@ class SlidingWindow(PreProcessor):
     Именно этот потолок делает экономию растущей вместе с размером сообщений:
     чем длиннее реплика, тем больше от неё отрезается.
 
-    Все три параметра действуют по цепочке: сначала сообщения/ходы, затем
-    бюджет токенов; потолок на сообщение применяется к тексту до сборки запроса.
+    Все три параметра действуют по цепочке: сначала сообщения, затем ходы,
+    затем бюджет токенов; потолок на сообщение применяется к тексту до сборки
+    запроса. Если лимиты не заданы вообще, история сохраняется целиком —
+    неявного `max_turns=10` больше нет.
     """
 
     ELISION_TEMPLATE = "\n…[сокращено {tokens} токенов]…\n"
@@ -43,9 +45,6 @@ class SlidingWindow(PreProcessor):
         self.max_message_tokens = max_message_tokens
         self.counter = counter or TokenCounter()
         self.head_ratio = min(max(head_ratio, 0.0), 1.0)
-
-        if self.max_messages is None and self.max_turns is None and self.max_tokens is None:
-            self.max_turns = 10
 
     def process(self, text: str, context: dict) -> str:
         # Одиночный текст окно не сокращает — логика в select() и compact().
@@ -93,6 +92,9 @@ class SlidingWindow(PreProcessor):
         """
         Возвращает события, попадающие в окно.
 
+        Рычаги применяются по цепочке: `max_messages`, затем `max_turns`,
+        затем `max_tokens`.
+
         `size` — функция event -> число токенов (нужна для `max_tokens`).
         Без неё бюджет считается по тексту события.
         """
@@ -100,7 +102,8 @@ class SlidingWindow(PreProcessor):
 
         if self.max_messages is not None and self.max_messages > 0:
             selected = selected[-self.max_messages :]
-        elif self.max_turns is not None and self.max_turns > 0:
+
+        if self.max_turns is not None and self.max_turns > 0:
             turns = self.group_by_turns(selected)
             selected = [event for turn in turns[-self.max_turns :] for event in turn]
 
@@ -180,7 +183,7 @@ class SlidingWindow(PreProcessor):
         parts = []
         if self.max_messages is not None:
             parts.append(f"max_messages={self.max_messages}")
-        elif self.max_turns is not None:
+        if self.max_turns is not None:
             parts.append(f"max_turns={self.max_turns}")
         if self.max_tokens:
             parts.append(f"max_tokens={self.max_tokens}")

@@ -1,6 +1,7 @@
 import difflib
 import hashlib
 import json
+import logging
 
 from google.adk.agents.callback_context import CallbackContext
 from google.adk.models import LlmRequest, LlmResponse
@@ -8,11 +9,14 @@ from google.genai.types import Content, Part
 
 from ..core.interfaces import GuardDecision
 from ..modules.analyzer import EmotionAnalyzer
+from ..modules.canary import CanaryGuard
 from ..modules.memory import FactMemoryProvider, MemoryProvider
 from ..modules.secret_editor import SecretEditor
 from ..modules.sparsifier import TextSparsifier
 from ..modules.storage import ColdStorage
 from ..modules.window import SlidingWindow
+
+logger = logging.getLogger(__name__)
 
 
 class ADKAgentCallbacks:
@@ -32,6 +36,7 @@ class ADKAgentCallbacks:
         enable_hitl: bool = True,
         memory_provider: MemoryProvider | None = None,
         fact_memory_provider: FactMemoryProvider | None = None,
+        canary_guard: CanaryGuard | None = None,
     ):
         self.analyzer = analyzer
         self.sparsifier = sparsifier
@@ -44,6 +49,8 @@ class ADKAgentCallbacks:
         self.enable_hitl = enable_hitl
         self.memory_provider = memory_provider
         self.fact_memory_provider = fact_memory_provider
+        # Канареечный токен: None => защита выключена (маркер в промпт не вставляется)
+        self.canary_guard = canary_guard
         self.flag_key = "_processed"
         self.ledger_key = "_ledger_upto"
 
@@ -229,6 +236,10 @@ class ADKAgentCallbacks:
                 continue
             parts: list[Part] = []
             final_text = self._final_text(session_id, event)
+            if self.canary_guard and self.canary_guard.check_incoming(final_text, session_id=session_id):
+                # Во входящем тексте канареечный маркер — это провокация/инъекция.
+                # Текст в модель не уходит, заменяется заглушкой.
+                final_text = "[BLOCKED: обнаружен канареечный маркер в запросе — вероятная prompt injection]"
             safe_text = (
                 self.secret_editor.redact(
                     final_text,
@@ -315,12 +326,12 @@ class ADKAgentCallbacks:
                     if memories := self.memory_provider.search(query, limit=3):
                         joined = "\n".join(f"- {m}" for m in memories)
                         mem_text += f"\n\n[Relevant context from past conversations]:\n{joined}"
-                        print(f"🧠 Найдено {len(memories)} фрагментов в памяти.")
+                        logger.info("Найдено %d фрагментов в памяти.", len(memories))
                 if self.fact_memory_provider:
                     if facts := self.fact_memory_provider.search(query, limit=5):
                         joined_facts = "\n".join(f"- {f}" for f in facts)
                         mem_text += f"\n\n[Known facts about user]:\n{joined_facts}"
-                        print(f"🧠 Найдено {len(facts)} фактов о пользователе.")
+                        logger.info("Найдено %d фактов о пользователе.", len(facts))
                 if mem_text:
                     safe_mem_text = (
                         self.secret_editor.redact(
@@ -354,7 +365,12 @@ class ADKAgentCallbacks:
         else:
             mode = "вся история"
             total_tokens = 0
-        print(f"=== КОНТЕКСТ ({mode}; сообщений: {len(new_contents)}; ~{total_tokens} токенов) ===")
+        logger.info(
+            "Контекст (%s): сообщений=%d, токенов~%d",
+            mode,
+            len(new_contents),
+            total_tokens,
+        )
         llm_request.contents = new_contents
         callback_context.state[self.flag_key] = True
 
@@ -406,23 +422,27 @@ class ADKAgentCallbacks:
             return
         has_function_call = any(part.function_call is not None for part in llm_response.content.parts)
         if reply_text := "".join(part.text for part in llm_response.content.parts if part.text):
-            print("=== ОТВЕТ МОДЕЛИ ===")
-            print(reply_text)
-            print("=" * 20)
+            if self.canary_guard and self.canary_guard.check_outgoing(
+                reply_text, session_id=getattr(callback_context.session, "id", "")
+            ):
+                # Маркер в ответе модели => системный промпт утёк наружу.
+                callback_context.state["canary_leak"] = True
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug("Ответ модели:\n%s\n%s", reply_text, "=" * 20)
         if llm_response.usage_metadata:
             cached = getattr(llm_response.usage_metadata, "cached_content_token_count", 0)
             prompt = getattr(llm_response.usage_metadata, "prompt_token_count", 0)
-            print(f"📊 Метрики: prompt={prompt}, cached={cached}")
+            logger.info("Метрики: prompt=%s, cached=%s", prompt, cached)
         if not has_function_call:
             callback_context.state[self.flag_key] = False
-            print("=== [after_model] финал, флаг снят ===")
+            logger.debug("after_model: финал, флаг снят")
 
     def _handle_empty_response(self, callback_context: CallbackContext, llm_response: LlmResponse):
         callback_context.state[self.flag_key] = False
         error_count = callback_context.state.get("error_count", 0) + 1
         callback_context.state["error_count"] = error_count
         reason = f"Сбой API: {llm_response.error_code}" if llm_response.error_code else "Модель вернула пустоту"
-        print(f"⚠️ [after_model] {reason}. Сбой №{error_count}.")
+        logger.warning("%s. Сбой №%d.", reason, error_count)
         if session := callback_context.session:
             for event in reversed(session.events):
                 if event.author == "user":

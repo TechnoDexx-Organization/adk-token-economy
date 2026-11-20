@@ -1,16 +1,28 @@
+import logging
 import subprocess
 from pathlib import Path
 
 from ..core.interfaces import GuardDecision
 from .guard import ShellCommandGuard
+from .secret_editor import SecretEditor
+from .ssrf import find_blocked_urls
+
+logger = logging.getLogger(__name__)
 
 
 class FileTools:
     """Инструменты для безопасной работы с файловой системой и запуска команд."""
 
-    def __init__(self, base_dir: str, guard: ShellCommandGuard | None = None):
+    def __init__(
+        self,
+        base_dir: str,
+        guard: ShellCommandGuard | None = None,
+        dlp: SecretEditor | None = None,
+    ):
         self.base_dir = Path(base_dir).resolve()
         self.guard = guard or ShellCommandGuard()
+        # Outbound DLP: исходящие данные (запись файлов) проходят через SecretEditor
+        self.dlp = dlp or SecretEditor()
 
     def run_shell_command(self, command: str) -> str:
         """Выполняет shell-команду с таймаутом и проверкой безопасности (Defense in Depth)."""
@@ -41,7 +53,13 @@ class FileTools:
             output = result.stdout.strip()
             if result.stderr:
                 output += f"\n[STDERR]: {result.stderr.strip()}"
-            return output or "Команда выполнена успешно (нет вывода)."
+            output = output or "Команда выполнена успешно (нет вывода)."
+            # SSRF-контроль вывода: адрес внутренней сети в результате команды —
+            # сигнал, что агент ходил куда не надо. Предупреждаем, не скрываем.
+            if blocked := find_blocked_urls(output):
+                logger.warning("SSRF: в выводе команды обнаружены внутренние адреса: %s", blocked)
+                output += "\n[ВНИМАНИЕ (SSRF)]: вывод содержит приватные/служебные адреса: " + ", ".join(blocked)
+            return output
         except subprocess.TimeoutExpired:
             return "❌ Ошибка: Команда превысила лимит времени (15 секунд)."
         except Exception as e:  # noqa: BLE001
@@ -55,8 +73,10 @@ class FileTools:
 
         try:
             file_path.parent.mkdir(parents=True, exist_ok=True)
+            # Outbound DLP: секреты вырезаются до записи на диск (аудит — в SecretEditor)
+            safe_content = self.dlp.redact(content, session_id=str(self.base_dir), event_id=filename, role="outbound")
             with open(file_path, "w", encoding="utf-8") as f:
-                f.write(content)
+                f.write(safe_content)
             return f"✅ Файл '{filename}' успешно записан."
         except Exception as e:  # noqa: BLE001
             return f"❌ Ошибка записи файла: {e!s}"

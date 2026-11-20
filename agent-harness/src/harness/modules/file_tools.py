@@ -57,7 +57,11 @@ class FileTools:
             # SSRF-контроль вывода: адрес внутренней сети в результате команды —
             # сигнал, что агент ходил куда не надо. Предупреждаем, не скрываем.
             if blocked := find_blocked_urls(output):
-                logger.warning("SSRF: в выводе команды обнаружены внутренние адреса: %s", blocked)
+                logger.warning(
+                    "SSRF: в выводе команды обнаружены внутренние адреса: %s",
+                    blocked,
+                    extra={"kind": "ssrf_output", "command": command, "blocked": blocked},
+                )
                 output += "\n[ВНИМАНИЕ (SSRF)]: вывод содержит приватные/служебные адреса: " + ", ".join(blocked)
             return output
         except subprocess.TimeoutExpired:

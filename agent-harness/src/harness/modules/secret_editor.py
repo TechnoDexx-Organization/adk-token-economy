@@ -112,7 +112,17 @@ class SecretEditor:
                 continue
 
             if self._is_secret_word(word):
-                logger.warning(f"🛡️ SecretEditor: скрыт потенциальный секрет (длина {len(word)})")
+                logger.warning(
+                    "🛡️ SecretEditor: скрыт потенциальный секрет (длина %d)",
+                    len(word),
+                    extra={
+                        "kind": "dlp_redact",
+                        "session_id": session_id,
+                        "event_id": event_id,
+                        "invocation_id": invocation_id,
+                        "role": role,
+                    },
+                )
                 if self.storage:
                     self.storage.log_redaction(
                         session_id,

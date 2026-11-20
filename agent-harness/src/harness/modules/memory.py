@@ -171,7 +171,11 @@ class HttpMemoryProvider(MemoryProvider):
     def search(self, query: str, limit: int = 3) -> list[str]:
         if not is_safe_url(self.url):
             # Хост мог сменить резолв с момента конструктора — проверяем снова.
-            logger.warning("SSRF: URL памяти стал небезопасным, запрос отклонён: %s", self.url)
+            logger.warning(
+                "SSRF: URL памяти стал небезопасным, запрос отклонён: %s",
+                self.url,
+                extra={"kind": "ssrf_block", "provider": "HttpMemoryProvider", "url": self.url},
+            )
             return []
         try:
             data = json.dumps({"query": query, "limit": limit}).encode("utf-8")

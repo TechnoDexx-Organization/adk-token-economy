@@ -370,6 +370,12 @@ class ADKAgentCallbacks:
             mode,
             len(new_contents),
             total_tokens,
+            extra={
+                "kind": "context_metrics",
+                "mode": mode,
+                "messages": len(new_contents),
+                "approx_tokens": total_tokens,
+            },
         )
         llm_request.contents = new_contents
         callback_context.state[self.flag_key] = True
@@ -432,7 +438,12 @@ class ADKAgentCallbacks:
         if llm_response.usage_metadata:
             cached = getattr(llm_response.usage_metadata, "cached_content_token_count", 0)
             prompt = getattr(llm_response.usage_metadata, "prompt_token_count", 0)
-            logger.info("Метрики: prompt=%s, cached=%s", prompt, cached)
+            logger.info(
+                "Метрики: prompt=%s, cached=%s",
+                prompt,
+                cached,
+                extra={"kind": "usage_metrics", "prompt_tokens": prompt, "cached_tokens": cached},
+            )
         if not has_function_call:
             callback_context.state[self.flag_key] = False
             logger.debug("after_model: финал, флаг снят")

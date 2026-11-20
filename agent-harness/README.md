@@ -18,6 +18,7 @@
 | `modules/file_tools.py` | `FileTools` — чтение/запись файлов + `run_shell_command` под контролем Guard, Outbound DLP и SSRF-контроль вывода |
 | `modules/ssrf.py` | `is_safe_url` / `find_blocked_urls` — заслон SSRF: localhost, приватные и служебные сети, DNS-rebinding, fail closed |
 | `modules/canary.py` | `CanaryGuard` — канареечный токен в системном промпте + детекция утечки на выходе и провокации на входе |
+| `modules/telemetry.py` | `JsonFormatter` + `configure_logging()` — JSON-логи в stdout + OTLP в Monium при `OTEL_EXPORTER_OTLP_ENDPOINT`; endpoint, `service.name` и ресурсы — из env |
 | `modules/retry.py` | `build_retry_config` — ретраи обращений к LLM (litellm-совместимые kwargs) |
 | `modules/skills.py` | `build_safe_skill_toolset` — динамические навыки из папки |
 | `modules/llm_factory.py` | `build_llm_model` — фабрика LLM (Yandex, Selectel, Selectel Router) |
@@ -45,6 +46,22 @@
 Любая необратимая обработка (сушка, усечение) пишет в ледник манифест с opcodes из
 `difflib`. Восстановление оригинала: `ColdStorage.restore(manifest)` — текст совпадает точь-в-точь.
 
+## Структурированное логирование (Structured Logging)
+
+Ядро не настраивает логирование само — остаётся `NullHandler`. Вызов `configure_logging(level)`
+из приложения:
+
+- ставит `JsonFormatter` в корневой логгер (одна JSON-строка на запись; `extra`-поля
+  (`kind`, `session_id`, `event_id`, `direction` и т.д.) попадают в JSON);
+- при заданной переменной `OTEL_EXPORTER_OTLP_ENDPOINT` подключает OTLP-хендлер
+  OpenTelemetry (`opentelemetry-exporter-otlp-proto-http`) — данные летят на
+  `ingest.monium.yandex.cloud:443`;
+- `service.name` и `cluster` / `deployment.name` берутся из `OTEL_SERVICE_NAME`
+  и `OTEL_RESOURCE_ATTRIBUTES`;
+- без extra-зависимостей OTel — JSON в stdout.
+
+Установка: `pip install -e ".[observability]"`.
+
 ## Безопасность (Security Hardening)
 
 - **SSRF.** `HttpMemoryProvider` проверяет URL до запроса: запрещены localhost и его алиасы,
@@ -64,7 +81,7 @@
 
 ```bash
 pip install -e ".[dev]"
-pytest                 # 75 тестов, сеть и API-ключи не нужны
+pytest                 # 83 тестов, сеть и API-ключи не нужны
 ```
 
 pythonpath настроен в `pyproject.toml`, поэтому тесты идут и на чистом клоне без установки.

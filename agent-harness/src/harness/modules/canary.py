@@ -57,7 +57,17 @@ class CanaryGuard:
         return build_canary_marker(self.token)
 
     def _log_event(self, session_id: str, direction: str) -> None:
-        logger.warning("🐤 Canary: обнаружен маркер (%s), session=%s", direction, session_id)
+        logger.warning(
+            "🐤 Canary: обнаружен маркер (%s), session=%s",
+            direction,
+            session_id,
+            extra={
+                "kind": "canary_hit",
+                "session_id": session_id,
+                "direction": direction,
+                "token_sha256": self.token_hash[:16],
+            },
+        )
         if self.storage:
             # Пишем только направление и хеши — утёкший промпт в ледник не попадает.
             self.storage.log(

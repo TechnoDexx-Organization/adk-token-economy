@@ -16,10 +16,18 @@ class SafeToolGuard(ToolGuard):
 
     def check(self, tool_name: str, args: dict, context: dict) -> GuardDecision:
         if tool_name in self.deny_list:
-            logger.warning("🚫 Блокировка (deny_list): %s", tool_name)
+            logger.warning(
+                "🚫 Блокировка (deny_list): %s",
+                tool_name,
+                extra={"kind": "guard_deny", "tool": tool_name, "reason": "deny_list"},
+            )
             return GuardDecision.DENY
         if self.allow_list and tool_name not in self.allow_list:
-            logger.warning("🚫 Блокировка (не в allow_list): %s", tool_name)
+            logger.warning(
+                "🚫 Блокировка (не в allow_list): %s",
+                tool_name,
+                extra={"kind": "guard_deny", "tool": tool_name, "reason": "not_in_allow_list"},
+            )
             return GuardDecision.DENY
         return GuardDecision.ALLOW
 
@@ -69,7 +77,11 @@ class ShellCommandGuard(ToolGuard):
         # ШАГ 1: DENY
         for pattern in self.deny_patterns:
             if re.search(pattern, command):
-                logger.warning("🚫 Guard (DENY): Заблокирована опасная команда: %s", command)
+                logger.warning(
+                    "🚫 Guard (DENY): Заблокирована опасная команда: %s",
+                    command,
+                    extra={"kind": "guard_deny", "command": command, "reason": "deny_pattern"},
+                )
                 return GuardDecision.DENY
 
         # ШАГ 2: Разбор на токены
@@ -79,7 +91,11 @@ class ShellCommandGuard(ToolGuard):
                 return GuardDecision.DENY
             first_token = tokens[0]
         except ValueError:
-            logger.warning("🚫 Guard: Ошибка парсинга команды: %s", command)
+            logger.warning(
+                "🚫 Guard: Ошибка парсинга команды: %s",
+                command,
+                extra={"kind": "guard_deny", "command": command, "reason": "parse_error"},
+            )
             return GuardDecision.DENY
 
         # ШАГ 3: ALLOW
@@ -87,5 +103,9 @@ class ShellCommandGuard(ToolGuard):
             return GuardDecision.ALLOW
 
         # ШАГ 4: HITL (Серая зона)
-        logger.warning("⚠️ Guard (HITL): Неизвестная команда '%s'. Требуется подтверждение.", first_token)
+        logger.warning(
+            "⚠️ Guard (HITL): Неизвестная команда '%s'. Требуется подтверждение.",
+            first_token,
+            extra={"kind": "guard_hitl", "command": first_token, "reason": "unknown_command"},
+        )
         return GuardDecision.REQUIRE_HITL

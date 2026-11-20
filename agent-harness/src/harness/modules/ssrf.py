@@ -87,7 +87,9 @@ def is_safe_url(url: str) -> bool:
     try:
         infos = socket.getaddrinfo(host, None)
     except (socket.gaierror, UnicodeError):
-        logger.warning("SSRF: не удалось разрешить хост %s — запрос запрещён", host)
+        logger.warning(
+            "SSRF: не удалось разрешить хост %s — запрос запрещён", host, extra={"kind": "ssrf_dns_fail", "host": host}
+        )
         return False
     return not any(_is_blocked_ip(info[4][0]) for info in infos)
 

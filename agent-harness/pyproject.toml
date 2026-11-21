@@ -7,7 +7,7 @@ name = "agent-harness"
 version = "0.2.0"
 description = "Универсальная обвязка для LLM-агентов (экономия токенов, память, эмоции, безопасность, динамические навыки)"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Igor Golov" }]
 keywords = ["llm", "agent", "adk", "context-window", "rag", "security"]

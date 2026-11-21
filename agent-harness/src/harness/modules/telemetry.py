@@ -113,11 +113,20 @@ def configure_logging(level: int | str = logging.INFO) -> logging.Handler:
 
     Идемпотентна: повторный вызов заменяет хендлер, а не дублирует его.
     Возвращает установленный хендлер (для тестов и отладки).
+
+    Порядок шагов точен и неизменен:
+      1) уровень root-логгера — до работы с хендлерами;
+      2) снятие ранее помеченных хендлеров по _MANAGED_FLAG (по копии
+         root.handlers — removeHandler мутирует живой список);
+      3) пометка нового хендлера флагом — до addHandler, иначе следующий
+         вызов его не найдёт и строки в логе удвоятся;
+      4) addHandler и возврат (OTLP-ветка выходит до создания stdout-ветки).
     """
+    # 1. уровень ставим раньше работы с хендлерами
     root = logging.getLogger()
     root.setLevel(level)
 
-    # снять предыдущий хендлер configure_logging, чтобы не дублировать строки
+    # 2. снять предыдущий хендлер configure_logging, чтобы не дублировать строки
     for handler in list(root.handlers):
         if getattr(handler, _MANAGED_FLAG, False):
             root.removeHandler(handler)
@@ -125,8 +134,9 @@ def configure_logging(level: int | str = logging.INFO) -> logging.Handler:
     handler = _attach_otel_handler()
     if handler is not None:
         handler.setLevel(level)
-        # служебный флаг: помечает хендлер, которым управляет configure_logging
+        # 3. флаг — до addHandler: иначе следующий вызов не найдёт хендлер и удалит дубль
         setattr(handler, _MANAGED_FLAG, True)  # noqa: B010
+        # 4. добавляем помеченным и выходим до stdout-ветки
         root.addHandler(handler)
         return handler
 

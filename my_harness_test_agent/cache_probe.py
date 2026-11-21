@@ -22,7 +22,7 @@ import contextlib
 import json
 import os
 import time
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 import requests
 
@@ -248,7 +248,7 @@ def main() -> None:  # sourcery skip: low-code-quality
     prompt = build_prompt(args.repeat, fresh=args.fresh)
     out_path = args.out or os.path.join(
         BASE_DIR,
-        f"cache_probe_{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.jsonl",
+        f"cache_probe_{datetime.now(UTC):%Y%m%d_%H%M%S}.jsonl",
     )
 
     print("=== ТЕСТ КЭШИРОВАНИЯ ===")

@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-from harness.modules.cost import CostTracker, CostLimitExceeded, DEFAULT_PRICING
+from harness.modules.cost import DEFAULT_PRICING, CostLimitExceeded, CostTracker
 
 
 class TestCostTrackerBasic:
@@ -171,6 +171,7 @@ class TestEnvironmentVariables:
     def test_env_cost_limit_not_set(self):
         """Если HARNESS_COST_LIMIT не установлен, limit=None."""
         import os
+
         env = dict(os.environ)
         env.pop("HARNESS_COST_LIMIT", None)
         with patch.dict("os.environ", env, clear=True):

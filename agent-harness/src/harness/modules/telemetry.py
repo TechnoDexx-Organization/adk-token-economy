@@ -26,6 +26,9 @@ from datetime import datetime, timezone
 
 __all__ = ["JsonFormatter", "configure_logging"]
 
+# служебный флаг: помечает хендлеры, созданные configure_logging
+_MANAGED_FLAG = "_harness_managed"
+
 # служебные атрибуты LogRecord, которые не относятся к структуре лога
 _RESERVED = frozenset(
     {
@@ -116,19 +119,20 @@ def configure_logging(level: int | str = logging.INFO) -> logging.Handler:
 
     # снять предыдущий хендлер configure_logging, чтобы не дублировать строки
     for handler in list(root.handlers):
-        if getattr(handler, "_harness_managed", False):
+        if getattr(handler, _MANAGED_FLAG, False):
             root.removeHandler(handler)
 
     handler = _attach_otel_handler()
     if handler is not None:
         handler.setLevel(level)
-        handler._harness_managed = True
+        # служебный флаг: помечает хендлер, которым управляет configure_logging
+        setattr(handler, _MANAGED_FLAG, True)  # noqa: B010
         root.addHandler(handler)
         return handler
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
     handler.setLevel(level)
-    handler._harness_managed = True
+    setattr(handler, _MANAGED_FLAG, True)  # noqa: B010
     root.addHandler(handler)
     return handler

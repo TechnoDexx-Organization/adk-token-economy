@@ -91,7 +91,14 @@ def is_safe_url(url: str) -> bool:
             "SSRF: не удалось разрешить хост %s — запрос запрещён", host, extra={"kind": "ssrf_dns_fail", "host": host}
         )
         return False
-    return not any(_is_blocked_ip(info[4][0]) for info in infos)
+    for info in infos:
+        if info[0] not in (socket.AF_INET, socket.AF_INET6):
+            continue
+        addr_raw = info[4][0]
+        addr = addr_raw if isinstance(addr_raw, str) else str(addr_raw)
+        if _is_blocked_ip(addr):
+            return False
+    return True
 
 
 # URL в произвольном тексте (для проверки аргументов инструментов)

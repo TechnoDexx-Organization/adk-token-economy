@@ -26,6 +26,7 @@ classifiers = [
 dependencies = [
     "pytest>=9.2.0",
     "python-dotenv",
+    "qdrant-client>=1.20.0",
 ]
 
 [project.optional-dependencies]
